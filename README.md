@@ -2,15 +2,7 @@
 
 A tree-based thread lifecycle library which sits on top of the Roblox task library.
 
-## Concepts
-
-### Thread Result
-
-### Thread Termination
-
-## Usage Examples
-
-### 1: Spawning Threads
+### 1: Spawning Threads & Cleanup Handlers
 
 ```lua
 local function Animate(Item, Damping, Frequency, Properties)
@@ -80,4 +72,56 @@ local Success, Result = Async.Await(Async.Spawn(function()
 end))
 
 print(Success, Result)
+```
+
+### 3: Waiting for All Thread Results
+
+```lua
+print(Async.AwaitAll({
+    Async.Spawn(function()
+        task.wait(1)
+        return true, "Delayed"
+    end);
+    Async.Spawn(function()
+        return true, "Immediate"
+    end);
+}))
+--> {{true, "Immediate"}, {true, "Delayed"}}
+```
+
+### 4: Waiting for First Thread Result
+
+```lua
+print(Async.AwaitFirst({
+    Async.Spawn(function()
+        task.wait(1)
+        return true, "Last"
+    end);
+    Async.Spawn(function()
+        return true, "First"
+    end);
+}))
+--> true, "First"
+```
+
+### 5: Blockable Timers
+
+```lua
+local Characters = {}
+local Thread = Async.Timer(1, function()
+    table.clear(Characters)
+
+    for _, Player in game.Players:GetChildren() do
+        local Char = Player.Character
+
+        if (not Char) then
+            return
+        end
+
+        table.insert(Characters, Char)
+    end
+end, "FindPlayers")
+-- "FindPlayers" will show up in the Microprofiler, though always ensure the timer does not block if the tag is specified
+
+task.delay(5, task.cancel, Thread)
 ```

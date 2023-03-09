@@ -202,6 +202,67 @@ return function()
         end)
     end)
 
+    describe("Async.SpawnTimed", function()
+        it("should reject non-numbers as first arg", function()
+            expect(function()
+                Async.SpawnTimed("test")
+            end).to.throw()
+
+            expect(function()
+                Async.SpawnTimed({})
+            end).to.throw()
+
+            expect(function()
+                Async.SpawnTimed(function() end)
+            end).to.throw()
+        end)
+
+        it("should reject non-functions as second arg", function()
+            expect(function()
+                Async.SpawnTimed(1, 1)
+            end).to.throw()
+
+            expect(function()
+                Async.SpawnTimed(1, "test")
+            end).to.throw()
+
+            expect(function()
+                Async.SpawnTimed(1, {})
+            end).to.throw()
+        end)
+
+        it("should accept a number as first arg & a function as second arg", function()
+            expect(function()
+                Async.SpawnTimed(1, function() end)
+            end).never.to.throw()
+        end)
+
+        it("should spawn a thread immediately", function()
+            local Finished = false
+
+            Async.SpawnTimed(1, function()
+                Finished = true
+            end)
+
+            expect(Finished).to.equal(true)
+        end)
+
+        it("should terminate a thread which has been running for more than the timeout", function()
+            local Finished = false
+
+            Async.SpawnTimed(0, function()
+                task.wait()
+                task.wait()
+                Finished = true
+            end)
+
+            expect(Finished).to.equal(false)
+            task.wait()
+            task.wait()
+            expect(Finished).to.equal(false)
+        end)
+    end)
+
     describe("Async.Delay", function()
         it("should reject non-numbers as first arg", function()
             expect(function()

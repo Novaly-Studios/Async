@@ -121,6 +121,16 @@ function Async.Spawn(Callback: ThreadFunction, ...): thread
     return task.spawn(CaptureThread, coroutine.running(), Callback, ...)
 end
 
+local SpawnTimedParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function())
+--- Spawns a new thread, with a timeout, and returns it.
+function Async.SpawnTimed(Time: number, Callback: ThreadFunction, ...): thread
+    SpawnTimedParams(Time, Callback)
+
+    local Thread = task.spawn(CaptureThread, coroutine.running(), Callback, ...)
+    task.delay(Time, Cancel, Thread, "TIMEOUT")
+    return Thread
+end
+
 local DelayParams = TypeGuard.Params(TypeGuard.Number():Optional(), TypeGuard.Function())
 --- Extension of task.delay.
 function Async.Delay(Time: number?, Callback: ThreadFunction, ...): thread
