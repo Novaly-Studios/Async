@@ -28,16 +28,19 @@ setmetatable(ThreadMetadata, {__mode = "ks"})
 local function GetOrCreateThreadMetadata(Thread: thread): ThreadMetadata
     local Metadata = ThreadMetadata[Thread]
 
-    if (not Metadata) then
-        Metadata = {
-            FinishCallbacks = {};
-            Children = {};
-
-            Success = nil;
-            Result = nil;
-        }
-        ThreadMetadata[Thread] = Metadata
+    if (Metadata) then
+        return Metadata
     end
+
+    Metadata = {
+        FinishCallbacks = {};
+        Children = {};
+
+        Success = nil;
+        Result = nil;
+    }
+
+    ThreadMetadata[Thread] = Metadata
 
     return Metadata
 end
