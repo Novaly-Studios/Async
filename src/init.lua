@@ -90,13 +90,16 @@ local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...
         Cancel(Running, Result)
     end)
 
-    local CallSuccess, ReportedSuccess, ReportedResult = pcall(Callback, function(OnFinishCallback)
+    local GotError
+    local CallSuccess, ReportedSuccess, ReportedResult = xpcall(Callback, function(Error)
+        GotError = Error .. "\n" .. debug.traceback(nil, 2)
+    end, function(OnFinishCallback)
         RegisterOnFinish(Running, OnFinishCallback)
     end, ...)
 
     if (CallSuccess == false) then
-        task.spawn(error, ReportedSuccess)
-        Finish(Running, CallSuccess, ReportedSuccess)
+        Finish(Running, CallSuccess, GotError)
+        task.spawn(error, GotError)
         return
     end
 
@@ -120,7 +123,7 @@ end
 local SpawnParams = TypeGuard.Params(TypeGuard.Function())
 --- Spawns a new thread and returns it.
 function Async.Spawn(Callback: ThreadFunction, ...): thread
-    SpawnParams(Callback, ...)
+    SpawnParams(Callback)
     return task.spawn(CaptureThread, coroutine.running(), Callback, ...)
 end
 
