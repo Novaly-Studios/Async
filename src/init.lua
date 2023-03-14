@@ -56,17 +56,27 @@ local function Finish(Thread: thread, Success: boolean, Result: any?)
         return
     end
 
-    Target.Success = Success
-    Target.Result = Result
+    if (Target.Success == nil) then
+        Target.Success = Success
+        Target.Result = Result
+    
+        local Status = coroutine.status(Thread)
+    
+        if (Status == "suspended") then
+            task.cancel(Thread)
+        end
 
-    local Status = coroutine.status(Thread)
-
-    if (Status == "suspended") then
-        task.cancel(Thread)
+        for Index, FinishCallback in Target.FinishCallbacks do
+            FinishCallback(Success, Result)
+        end
     end
 
-    for Index, FinishCallback in Target.FinishCallbacks do
-        FinishCallback(Success, Result)
+    if (Success) then
+        return
+    end
+
+    for _, Child in Target.Children do
+        Finish(Child, Success, Result)
     end
 end
 
@@ -78,17 +88,14 @@ local function Cancel(Thread: thread, Result: any?)
     Finish(Thread, false, Result)
 end
 
+local function NothingFunction()
+end
+
 local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...)
     local Running = coroutine.running()
-
-    RegisterOnFinish(Running, function() end)
-    RegisterOnFinish(ParentThread, function(Success, Result)
-        if (Success) then
-            return
-        end
-
-        Cancel(Running, Result)
-    end)
+    --RegisterOnFinish(Running, NothingFunction)
+    GetOrCreateThreadMetadata(Running)
+    table.insert(GetOrCreateThreadMetadata(ParentThread).Children, Running)
 
     local GotError
     local CallSuccess, ReportedSuccess, ReportedResult = xpcall(Callback, function(Error)

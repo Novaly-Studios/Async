@@ -418,6 +418,70 @@ return function()
                 expect(Result).to.equal("CustomFail")
             end)
         end)
+
+        it("should cancel all sub-threads", function()
+            local FirstSuccess, SecondSuccess
+
+            local Main = Async.Spawn(function(OnFinish)
+                OnFinish(function(Success)
+                    FirstSuccess = Success
+                end)
+
+                Async.Spawn(function(OnFinish)
+                    OnFinish(function(Success)
+                        SecondSuccess = Success
+                    end)
+
+                    task.wait(0.1)
+                end)
+            end)
+
+            expect(FirstSuccess).to.equal(true)
+            expect(SecondSuccess).to.equal(nil)
+
+            Async.Cancel(Main)
+
+            expect(FirstSuccess).to.equal(true)
+            expect(SecondSuccess).to.equal(false)
+
+            task.wait(0.1)
+
+            expect(FirstSuccess).to.equal(true)
+            expect(SecondSuccess).to.equal(false)
+        end)
+
+        it("should only cancel or resolve a thread and sub-threads once", function()
+            local FirstSuccess, SecondSuccess
+
+            local Main = Async.Spawn(function(OnFinish)
+                OnFinish(function(Success)
+                    FirstSuccess = Success
+                end)
+
+                Async.Spawn(function(OnFinish)
+                    OnFinish(function(Success)
+                        SecondSuccess = Success
+                    end)
+
+                    task.wait(0.1)
+                end)
+
+                task.wait(0.1)
+            end)
+
+            expect(FirstSuccess).to.equal(nil)
+            expect(SecondSuccess).to.equal(nil)
+
+            Async.Cancel(Main)
+
+            expect(FirstSuccess).to.equal(false)
+            expect(SecondSuccess).to.equal(false)
+
+            Async.Resolve(Main)
+
+            expect(FirstSuccess).to.equal(false)
+            expect(SecondSuccess).to.equal(false)
+        end)
     end)
 
     describe("Async.Resolve", function()
