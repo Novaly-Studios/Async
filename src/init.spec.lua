@@ -530,6 +530,22 @@ return function()
         end)
     end)
 
+    describe("Async.CancelRoot", function()
+        it("should only cancel the top-level thread and not its descendants", function()
+            local SubThread
+            local MainThread = Async.Spawn(function()
+                SubThread = Async.Spawn(function()
+                    task.wait(0.1)
+                end)
+            end)
+
+            Async.CancelRoot(MainThread)
+
+            expect(SubThread).to.be.ok()
+            expect(coroutine.status(SubThread)).to.equal("suspended")
+        end)
+    end)
+
     describe("Async.Resolve", function()
         it("should reject non-threads as first arg", function()
             expect(function()
@@ -594,6 +610,22 @@ return function()
                 expect(Success).to.equal(true)
                 expect(Result).to.equal("CustomSuccess")
             end)
+        end)
+    end)
+
+    describe("Async.ResolveRoot", function()
+        it("should only resolve the top-level thread and not its descendants", function()
+            local SubThread
+            local MainThread = Async.Spawn(function()
+                SubThread = Async.Spawn(function()
+                    task.wait(0.1)
+                end)
+            end)
+
+            Async.ResolveRoot(MainThread)
+
+            expect(SubThread).to.be.ok()
+            expect(coroutine.status(SubThread)).to.equal("suspended")
         end)
     end)
 
@@ -926,6 +958,56 @@ return function()
             task.wait(0.2)
 
             expect(Ran).to.equal(2)
+        end)
+    end)
+
+    describe("Async.Parent", function()
+        it("should accept a thread or nil as the first arg only", function()
+            expect(function()
+                Async.Parent(1)
+            end).to.throw()
+
+            expect(function()
+                Async.Parent("test")
+            end).to.throw()
+            
+            expect(function()
+                Async.Parent({})
+            end).to.throw()
+
+            expect(function()
+                Async.Parent()
+            end).never.to.throw()
+
+            expect(function()
+                Async.Parent(Async.Spawn(function() end))
+            end).never.to.throw()
+        end)
+
+        it("should return the parent thread given one Spawn call", function()
+            local Thread = coroutine.running()
+            local SubThread
+
+            Async.Spawn(function()
+                SubThread = Async.Parent()
+            end)
+
+            expect(SubThread).to.equal(Thread)
+        end)
+
+        it("should return the parent thread given two Spawn calls", function()
+            local Thread
+            local SubThread
+
+            Async.Spawn(function()
+                Thread = coroutine.running()
+
+                Async.Spawn(function()
+                    SubThread = Async.Parent()
+                end)
+            end)
+
+            expect(SubThread).to.equal(Thread)
         end)
     end)
 end

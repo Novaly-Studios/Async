@@ -16,8 +16,9 @@ type ThreadMetadata = {
     FinishCallbacks: {FinishCallback};
     Children: {thread};
 
-    Success: boolean;
+    Success: boolean?;
     Result: any?;
+    Parent: thread;
 }
 type ThreadFunction = ((FinishCallback?, ...any) -> (boolean, any?))
 
@@ -37,6 +38,7 @@ local function GetOrCreateThreadMetadata(Thread: thread): ThreadMetadata
 
         Success = nil;
         Result = nil;
+        Parent = nil;
     }
 
     ThreadMetadata[Thread] = Metadata
@@ -99,7 +101,7 @@ end
 
 local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...)
     local Running = coroutine.running()
-    GetOrCreateThreadMetadata(Running)
+    GetOrCreateThreadMetadata(Running).Parent = ParentThread
     table.insert(GetOrCreateThreadMetadata(ParentThread).Children, Running)
 
     local GotError
@@ -277,14 +279,6 @@ function Async.Await(Thread: thread, Timeout: number?): (boolean, any?)
     return Success, Result
 end
 
---[[ function Async.AwaitDescendants(Thread)
-    Async.Await(Thread)
-
-    for _, Child in GetOrCreateThreadMetadata(Thread).Children do
-        Async.AwaitDescendants(Child)
-    end
-end ]]
-
 local AwaitAllParams = TypeGuard.Params(TypeGuard.Array(TypeGuard.Thread()):MinLength(1), TypeGuard.Number():Optional())
 --- Waits for all threads to finish, with an optional timeout or default resorted timeout (30s), and returns the results.
 function Async.AwaitAll(Threads: {thread}, Timeout: number?): {{any}}
@@ -387,6 +381,13 @@ function Async.Timer(Interval: number, Call: ((number) -> ()), Name: string?): t
             LastTime = CurrentTime
         end
     end)
+end
+
+local ParentParams = TypeGuard.Params(TypeGuard.Thread():Optional())
+--- Gets the parent of a given thread, or the parent of the current thread if no thread is passed.
+function Async.Parent(Thread: thread?)
+    ParentParams(Thread)
+    return GetOrCreateThreadMetadata(Thread or coroutine.running()).Parent
 end
 
 return Async
