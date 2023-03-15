@@ -13,7 +13,6 @@ local DEFAULT_THREAD_TIMEOUT = 30
 
 type FinishCallback = ((Success: boolean, Result: any?) -> ())
 type ThreadMetadata = {
-    TerminatePropagate: (() -> ())?;
     FinishCallbacks: {FinishCallback};
     Children: {thread};
 
@@ -23,7 +22,7 @@ type ThreadMetadata = {
 type ThreadFunction = ((FinishCallback?, ...any) -> (boolean, any?))
 
 local ThreadMetadata: {[thread]: ThreadMetadata} = {}
-setmetatable(ThreadMetadata, {__mode = "ks"})
+setmetatable(ThreadMetadata, {__mode = "k"})
 
 local function GetOrCreateThreadMetadata(Thread: thread): ThreadMetadata
     local Metadata = ThreadMetadata[Thread]
@@ -49,7 +48,7 @@ local function RegisterOnFinish(Thread: thread, Callback: FinishCallback)
     table.insert(GetOrCreateThreadMetadata(Thread).FinishCallbacks, Callback)
 end
 
-local function Finish(Thread: thread, Success: boolean, Result: any?)
+local function Finish(Thread: thread, FinishAll: boolean?, Success: boolean, Result: any?)
     local Target = ThreadMetadata[Thread]
 
     if (not Target) then
@@ -75,17 +74,27 @@ local function Finish(Thread: thread, Success: boolean, Result: any?)
         return
     end
 
-    for _, Child in Target.Children do
-        Finish(Child, Success, Result)
+    if (FinishAll) then
+        for _, Child in Target.Children do
+            Finish(Child, true, Success, Result)
+        end
     end
 end
 
 local function Resolve(Thread: thread, Result: any?)
-    Finish(Thread, true, Result)
+    Finish(Thread, true, true, Result)
+end
+
+local function ResolveRoot(Thread: thread, Result: any?)
+    Finish(Thread, false, true, Result)
 end
 
 local function Cancel(Thread: thread, Result: any?)
-    Finish(Thread, false, Result)
+    Finish(Thread, true, false, Result)
+end
+
+local function CancelRoot(Thread: thread, Result: any?)
+    Finish(Thread, false, false, Result)
 end
 
 local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...)
@@ -100,26 +109,35 @@ local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...
         RegisterOnFinish(Running, OnFinishCallback)
     end, ...)
 
+    -- Fail signal -> terminate all sub-threads
     if (CallSuccess == false) then
-        Finish(Running, CallSuccess, GotError)
+        Cancel(Running, GotError)
         task.spawn(error, GotError)
         return
     end
 
     local ReportedSuccessType = typeof(ReportedSuccess)
 
+    -- Fail signal -> terminate all sub-threads
+    -- Success signal -> only terminate top level thread
     if (ReportedSuccessType == "boolean") then
-        Finish(Running, ReportedSuccess, ReportedResult)
+        if (ReportedSuccess) then
+            ResolveRoot(Running, ReportedResult)
+        else
+            Cancel(Running, ReportedResult)
+        end
+
         return
     end
 
+    -- No return (nil) is implicitly a success signal, success signals should not terminate sub-threads by default
     if (ReportedSuccessType == "nil") then
-        Finish(Running, true, ReportedResult)
+        ResolveRoot(Running, ReportedResult)
         return
     end
 
     task.spawn(error, "Thread did not return a success signifier. Must return: (Success: boolean, Result: any?)")
-    Finish(Running, false, "INVALID_RETURN")
+    Cancel(Running, "INVALID_RETURN")
 end
 
 -- User Functions
@@ -131,8 +149,8 @@ function Async.Spawn(Callback: ThreadFunction, ...): thread
 end
 
 local SpawnTimedCancelParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function())
---- Spawns a new thread, with a timeout, and returns it. All descendant threads
---- are cancelled on the timeout regardless of whether the root thread has completed.
+--- Spawns a new thread, with a timeout, and returns it. Descendant threads and the root thread are
+--- all cancelled on timeout regardless of whether the root thread has completed.
 function Async.SpawnTimedCancel(Time: number, Callback: ThreadFunction, ...): thread
     SpawnTimedCancelParams(Time, Callback)
 
@@ -173,17 +191,29 @@ function Async.Defer(Callback: ThreadFunction, ...): thread
 end
 
 local CancelParams = TypeGuard.Params(TypeGuard.Thread():HasStatus("Running"):Negate():FailMessage("Cannot cancel a thread from within itself - use 'return false, ...' instead"))
--- Halts a task with a fail status (false, Result).
+-- Halts a task with a fail status (false, Result) and all descendant threads.
 function Async.Cancel(Thread: thread, Result: any?)
     CancelParams(Thread)
     Cancel(Thread, Result)
 end
 
+-- Halts a task with a fail status (false, Result).
+function Async.CancelRoot(Thread: thread, Result: any?)
+    CancelParams(Thread)
+    CancelRoot(Thread, Result)
+end
+
 local ResolveParams = TypeGuard.Params(TypeGuard.Thread():HasStatus("Running"):Negate():FailMessage("Cannot resolve a thread from within itself - use 'return true, ...' instead"))
--- Halts a task with a success status (true, Result).
+-- Halts a task with a success status (true, Result) and all descendant threads.
 function Async.Resolve(Thread: thread, Result: any?)
     ResolveParams(Thread)
     Resolve(Thread, Result)
+end
+
+-- Halts a task with a success status (true, Result).
+function Async.ResolveRoot(Thread: thread, Result: any?)
+    ResolveParams(Thread)
+    ResolveRoot(Thread, Result)
 end
 
 local AwaitParams = TypeGuard.Params(TypeGuard.Thread(), TypeGuard.Number():Optional())
@@ -246,6 +276,14 @@ function Async.Await(Thread: thread, Timeout: number?): (boolean, any?)
 
     return Success, Result
 end
+
+--[[ function Async.AwaitDescendants(Thread)
+    Async.Await(Thread)
+
+    for _, Child in GetOrCreateThreadMetadata(Thread).Children do
+        Async.AwaitDescendants(Child)
+    end
+end ]]
 
 local AwaitAllParams = TypeGuard.Params(TypeGuard.Array(TypeGuard.Thread()):MinLength(1), TypeGuard.Number():Optional())
 --- Waits for all threads to finish, with an optional timeout or default resorted timeout (30s), and returns the results.
