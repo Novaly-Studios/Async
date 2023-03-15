@@ -202,45 +202,45 @@ return function()
         end)
     end)
 
-    describe("Async.SpawnTimed", function()
+    describe("Async.SpawnTimeLimit", function()
         it("should reject non-numbers as first arg", function()
             expect(function()
-                Async.SpawnTimed("test")
+                Async.SpawnTimeLimit("test")
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimed({})
+                Async.SpawnTimeLimit({})
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimed(function() end)
+                Async.SpawnTimeLimit(function() end)
             end).to.throw()
         end)
 
         it("should reject non-functions as second arg", function()
             expect(function()
-                Async.SpawnTimed(1, 1)
+                Async.SpawnTimeLimit(1, 1)
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimed(1, "test")
+                Async.SpawnTimeLimit(1, "test")
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimed(1, {})
+                Async.SpawnTimeLimit(1, {})
             end).to.throw()
         end)
 
         it("should accept a number as first arg & a function as second arg", function()
             expect(function()
-                Async.SpawnTimed(1, function() end)
+                Async.SpawnTimeLimit(1, function() end)
             end).never.to.throw()
         end)
 
         it("should spawn a thread immediately", function()
             local Finished = false
 
-            Async.SpawnTimed(1, function()
+            Async.SpawnTimeLimit(1, function()
                 Finished = true
             end)
 
@@ -250,7 +250,7 @@ return function()
         it("should terminate a thread which has been running for more than the timeout", function()
             local Finished = false
 
-            Async.SpawnTimed(0, function()
+            Async.SpawnTimeLimit(0, function()
                 task.wait()
                 task.wait()
                 Finished = true
@@ -260,6 +260,52 @@ return function()
             task.wait()
             task.wait()
             expect(Finished).to.equal(false)
+        end)
+
+        it("should not cancel sub-threads if the main thread does not timeout", function()
+            local Cancelled
+
+            Async.SpawnTimeLimit(0, function()
+                Async.Spawn(function(OnFinish)
+                    OnFinish(function(Success)
+                        if (not Success) then
+                            Cancelled = true
+                        end
+                    end)
+
+                    task.wait()
+                    task.wait()
+                end)
+            end)
+
+            expect(Cancelled).to.equal(nil)
+            task.wait()
+            task.wait()
+            expect(Cancelled).to.equal(nil)
+        end)
+    end)
+
+    describe("Async.SpawnTimedCancel", function()
+        it("should cancel sub-threads if the main thread does not timeout", function()
+            local Cancelled
+
+            Async.SpawnTimedCancel(0, function()
+                Async.Spawn(function(OnFinish)
+                    OnFinish(function(Success)
+                        if (not Success) then
+                            Cancelled = true
+                        end
+                    end)
+
+                    task.wait()
+                    task.wait()
+                end)
+            end)
+
+            expect(Cancelled).to.equal(nil)
+            task.wait()
+            task.wait()
+            expect(Cancelled).to.equal(true)
         end)
     end)
 

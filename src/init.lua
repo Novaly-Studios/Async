@@ -88,12 +88,8 @@ local function Cancel(Thread: thread, Result: any?)
     Finish(Thread, false, Result)
 end
 
-local function NothingFunction()
-end
-
 local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...)
     local Running = coroutine.running()
-    --RegisterOnFinish(Running, NothingFunction)
     GetOrCreateThreadMetadata(Running)
     table.insert(GetOrCreateThreadMetadata(ParentThread).Children, Running)
 
@@ -134,13 +130,31 @@ function Async.Spawn(Callback: ThreadFunction, ...): thread
     return task.spawn(CaptureThread, coroutine.running(), Callback, ...)
 end
 
-local SpawnTimedParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function())
---- Spawns a new thread, with a timeout, and returns it.
-function Async.SpawnTimed(Time: number, Callback: ThreadFunction, ...): thread
-    SpawnTimedParams(Time, Callback)
+local SpawnTimedCancelParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function())
+--- Spawns a new thread, with a timeout, and returns it. All descendant threads
+--- are cancelled on the timeout regardless of whether the root thread has completed.
+function Async.SpawnTimedCancel(Time: number, Callback: ThreadFunction, ...): thread
+    SpawnTimedCancelParams(Time, Callback)
 
     local Thread = task.spawn(CaptureThread, coroutine.running(), Callback, ...)
     task.delay(Time, Cancel, Thread, "TIMEOUT")
+    return Thread
+end
+
+local SpawnTimeLimitParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function())
+--- Spawns a new thread, with a timeout, and returns it. If the thread completes before
+--- the timeout, the timeout is cancelled, preserving all descendant threads.
+function Async.SpawnTimeLimit(Time: number, Callback: ThreadFunction, ...): thread
+    SpawnTimeLimitParams(Time, Callback)
+
+    local Thread = task.spawn(CaptureThread, coroutine.running(), Callback, ...)
+
+    task.delay(Time, function()
+        if (GetOrCreateThreadMetadata(Thread).Success == nil) then
+            Cancel(Thread, "TIMEOUT")
+        end
+    end)
+
     return Thread
 end
 
