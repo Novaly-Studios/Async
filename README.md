@@ -2,7 +2,7 @@
 
 A tree-based thread lifecycle library which sits on top of the Roblox task library.
 
-### 1: Spawning Threads & Cleanup Handlers
+## 1: Spawning Threads & Cleanup Handlers
 
 ```lua
 local function Animate(Item, Damping, Frequency, Properties)
@@ -57,7 +57,7 @@ task.wait(2)
 Async.Cancel(TestAnimation)
 ```
 
-### 2: Waiting for Thread Results
+## 2: Waiting for Thread Results
 
 ```lua
 local Success, Result = Async.Await(Async.Spawn(function()
@@ -74,7 +74,7 @@ end))
 print(Success, Result)
 ```
 
-### 3: Waiting for All Thread Results
+## 3: Waiting for All Thread Results
 
 ```lua
 print(Async.AwaitAll({
@@ -89,7 +89,7 @@ print(Async.AwaitAll({
 --> {{true, "Immediate"}, {true, "Delayed"}}
 ```
 
-### 4: Waiting for First Thread Result
+## 4: Waiting for First Thread Result
 
 ```lua
 print(Async.AwaitFirst({
@@ -104,7 +104,7 @@ print(Async.AwaitFirst({
 --> true, "First"
 ```
 
-### 5: Blockable Timers
+## 5: Blockable Timers
 
 ```lua
 local Characters = {}
@@ -123,5 +123,5 @@ local Thread = Async.Timer(1, function()
 end, "FindPlayers")
 -- "FindPlayers" will show up in the Microprofiler, though always ensure the timer does not block if the tag is specified
 
-task.delay(5, task.cancel, Thread)
+Async.Delay(5, Async.Cancel, Thread)
 ```
