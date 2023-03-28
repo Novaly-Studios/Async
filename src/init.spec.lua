@@ -973,6 +973,67 @@ return function()
         end)
     end)
 
+    describe("Async.TimerAsync", function()
+        it("should only accept a number & function as first 2 args", function()
+            expect(function()
+                Async.Timer(1)
+            end).to.throw()
+
+            expect(function()
+                Async.Timer(1, "test")
+            end).to.throw()
+
+            expect(function()
+                Async.Timer(1, 1)
+            end).to.throw()
+
+            expect(function()
+                Async.Timer(1, {})
+            end).to.throw()
+
+            expect(function()
+                Async.Timer("test", function() end)
+            end).to.throw()
+
+            expect(function()
+                Async.Timer({}, function() end)
+            end).to.throw()
+
+            expect(function()
+                Async.Timer(function() end, function() end)
+            end).to.throw()
+
+            expect(function()
+                task.cancel(Async.Timer(1, function() end))
+            end).never.to.throw()
+        end)
+
+        it("should accept an optional third argument as an optional string", function()
+            expect(function()
+                Async.Timer(1, function() end, 1)
+            end).to.throw()
+
+            expect(function()
+                task.cancel(Async.Timer(1, function() end, "test"))
+            end).never.to.throw()
+        end)
+
+        it("should not block for yielding threads", function()
+            local Count = 0
+            local Thread = Async.TimerAsync(0, function()
+                task.wait(0.1)
+                Count += 1
+            end)
+            
+            expect(Count).to.equal(0)
+            task.wait()
+            task.wait()
+            task.wait(0.1)
+            Async.Cancel(Thread)
+            expect(Count).to.equal(3)
+        end)
+    end)
+
     describe("Async.Parent", function()
         it("should accept a thread or nil as the first arg only", function()
             expect(function()

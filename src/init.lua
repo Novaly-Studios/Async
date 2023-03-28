@@ -384,6 +384,15 @@ function Async.Timer(Interval: number, Call: ((number) -> ()), Name: string?): t
     end)
 end
 
+--- Creates a timer which spawns a new thread each call, preventing operations from blocking the timer thread.
+function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string?): thread
+    TimerParams(Interval, Call, Name)
+
+    return Async.Timer(Interval, function(DeltaTime)
+        Async.Spawn(Call, DeltaTime)
+    end, Name)
+end
+
 local ParentParams = TypeGuard.Params(TypeGuard.Thread():Optional())
 --- Gets the parent of a given thread, or the parent of the current thread if no thread is passed.
 function Async.Parent(Thread: thread?)
