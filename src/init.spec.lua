@@ -6,6 +6,18 @@ describe = describe or anyfn
 return function()
     local Async = require(script.Parent)
 
+    describe("Async.Count", function()
+        it("should return 0 when no threads are running", function()
+            expect(Async.Count()).to.equal(0)
+        end)
+
+        it("should return 3 for 2 spawned threads (given existence of parent thread too)", function()
+            Async.Spawn(function() end)
+            Async.Spawn(function() end)
+            expect(Async.Count()).to.equal(3)
+        end)
+    end)
+
     describe("Async.Spawn", function()
         it("should reject non-functions as first arg", function()
             expect(function()
@@ -1008,6 +1020,42 @@ return function()
             end)
 
             expect(SubThread).to.equal(Thread)
+        end)
+    end)
+
+    describe("Async.GetMetadata", function()
+        it("should accept a thread or nil as the first arg only", function()
+            expect(function()
+                Async.GetMetadata(1)
+            end).to.throw()
+
+            expect(function()
+                Async.GetMetadata("test")
+            end).to.throw()
+            
+            expect(function()
+                Async.GetMetadata({})
+            end).to.throw()
+
+            expect(function()
+                Async.GetMetadata()
+            end).never.to.throw()
+
+            expect(function()
+                Async.GetMetadata(Async.Spawn(function() end))
+            end).never.to.throw()
+        end)
+
+        it("should return a table of metadata or nil if the thread is not spawned through Async", function()
+            task.spawn(function()
+                expect(Async.GetMetadata()).to.equal(nil)
+            end)
+
+            Async.Spawn(function()
+                expect(Async.GetMetadata()).to.be.a("table")
+            end)
+
+            expect(Async.GetMetadata(Async.Spawn(function() end))).to.be.a("table")
         end)
     end)
 end

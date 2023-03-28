@@ -24,6 +24,7 @@ type ThreadFunction = ((FinishCallback?, ...any) -> (boolean, any?))
 
 local ThreadMetadata: {[thread]: ThreadMetadata} = {}
 setmetatable(ThreadMetadata, {__mode = "k"})
+Async._ThreadMetadata = ThreadMetadata
 
 local function GetOrCreateThreadMetadata(Thread: thread): ThreadMetadata
     local Metadata = ThreadMetadata[Thread]
@@ -388,6 +389,24 @@ local ParentParams = TypeGuard.Params(TypeGuard.Thread():Optional())
 function Async.Parent(Thread: thread?)
     ParentParams(Thread)
     return GetOrCreateThreadMetadata(Thread or coroutine.running()).Parent
+end
+
+local GetMetadataParams = TypeGuard.Params(TypeGuard.Thread():Optional())
+--- Gets the metadata of a given thread, or the metadata of the current thread if no thread is passed.
+function Async.GetMetadata(Thread: thread?): ThreadMetadata?
+    GetMetadataParams(Thread)
+    return ThreadMetadata[Thread or coroutine.running()]
+end
+
+--- Gets the number of threads currently allocated.
+function Async.Count()
+    local Result = 0
+
+    for _ in ThreadMetadata do
+        Result += 1
+    end
+
+    return Result
 end
 
 return Async
