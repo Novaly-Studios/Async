@@ -58,7 +58,13 @@ local function IsDescendantOf(Thread1: thread, Thread2: thread): boolean
     local CurrentThread = Thread1
 
     while (true) do
-        CurrentThread = ThreadMetadata[CurrentThread].Parent
+        local Metadata = ThreadMetadata[CurrentThread]
+
+        if (not Metadata) then
+            return false
+        end
+
+        CurrentThread = Metadata.Parent
 
         if (not CurrentThread) then
             return false
