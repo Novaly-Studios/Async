@@ -1042,7 +1042,7 @@ return function()
             
             task.wait()
             Async.Cancel(Thread)
-            expect(Count).to.equal(1)
+            expect(Count).to.equal(2)
         end)
 
         it("should pass difference in time as first arg for UseTaskSpawn", function()
@@ -1050,11 +1050,11 @@ return function()
             local Thread = Async.TimerAsync(0, function(Delta)
                 Count += 1
                 expect(Delta).to.be.a("number")
-            end)
+            end, nil, true)
             
             task.wait()
             Async.Cancel(Thread)
-            expect(Count).to.equal(1)
+            expect(Count).to.equal(2)
         end)
     end)
 
