@@ -411,6 +411,56 @@ return function()
         end)
     end)
 
+    describe("Finish Rules", function()
+        it("should disallow cancellation & resolution from the same thread", function()
+            local CancelCompleted = false
+
+            Async.Spawn(function()
+                Async.Cancel(coroutine.running())
+                CancelCompleted = true
+            end)
+
+            expect(CancelCompleted).to.equal(false)
+
+            local ResolveCompleted = false
+
+            Async.Spawn(function()
+                Async.Resolve(coroutine.running())
+                ResolveCompleted = true
+            end)
+
+            expect(ResolveCompleted).to.equal(false)
+        end)
+
+        it("should disallow cancellation & resolution from a sub-thread", function()
+            local CancelCompleted = false
+
+            Async.Spawn(function()
+                local Ref = coroutine.running()
+
+                Async.Spawn(function()
+                    Async.Cancel(Ref)
+                    CancelCompleted = true
+                end)
+            end)
+
+            expect(CancelCompleted).to.equal(false)
+
+            local ResolveCompleted = false
+
+            Async.Spawn(function()
+                local Ref = coroutine.running()
+
+                Async.Spawn(function()
+                    Async.Resolve(Ref)
+                    ResolveCompleted = true
+                end)
+            end)
+
+            expect(ResolveCompleted).to.equal(false)
+        end)
+    end)
+
     describe("Async.Cancel", function()
         it("should reject non-threads as first arg", function()
             expect(function()
@@ -1004,7 +1054,7 @@ return function()
             end).to.throw()
 
             expect(function()
-                task.cancel(Async.TimerAsync(1, function() end))
+                Async.TimerAsync(1, function() end)()
             end).never.to.throw()
         end)
 
@@ -1014,13 +1064,13 @@ return function()
             end).to.throw()
 
             expect(function()
-                task.cancel(Async.TimerAsync(1, function() end, "test"))
+                Async.TimerAsync(1, function() end, "test")()
             end).never.to.throw()
         end)
 
         it("should not block for yielding threads", function()
             local Count = 0
-            local Thread = Async.TimerAsync(0, function()
+            local Stop = Async.TimerAsync(0, function()
                 task.wait(0.1)
                 Count += 1
             end)
@@ -1029,31 +1079,31 @@ return function()
             task.wait()
             task.wait()
             task.wait(0.1)
-            Async.Cancel(Thread)
+            Stop()
             expect(Count).to.equal(3)
         end)
 
         it("should pass difference in time as first arg", function()
             local Count = 0
-            local Thread = Async.TimerAsync(0, function(Delta)
+            local Stop = Async.TimerAsync(0, function(Delta)
                 Count += 1
                 expect(Delta).to.be.a("number")
             end)
             
             task.wait()
-            Async.Cancel(Thread)
+            Stop()
             expect(Count).to.equal(2)
         end)
 
         it("should pass difference in time as first arg for UseTaskSpawn", function()
             local Count = 0
-            local Thread = Async.TimerAsync(0, function(Delta)
+            local Stop = Async.TimerAsync(0, function(Delta)
                 Count += 1
                 expect(Delta).to.be.a("number")
             end, nil, true)
             
             task.wait()
-            Async.Cancel(Thread)
+            Stop()
             expect(Count).to.equal(2)
         end)
     end)

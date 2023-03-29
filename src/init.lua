@@ -54,6 +54,24 @@ local function RegisterOnFinish(Thread: thread, Callback: FinishCallback)
     table.insert(ThreadMetadata[Thread].FinishCallbacks, Callback)
 end
 
+local function IsDescendantOf(Thread1: thread, Thread2: thread): boolean
+    local CurrentThread = Thread1
+
+    while (true) do
+        CurrentThread = ThreadMetadata[CurrentThread].Parent
+
+        if (not CurrentThread) then
+            return false
+        end
+
+        if (CurrentThread == Thread2) then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function Finish(Thread: thread, FinishAll: boolean?, Success: boolean, Result: any?)
     local Target = ThreadMetadata[Thread]
 
@@ -64,11 +82,14 @@ local function Finish(Thread: thread, FinishAll: boolean?, Success: boolean, Res
     if (Target.Success == nil) then
         Target.Success = Success
         Target.Result = Result
-    
+
         local Status = coroutine.status(Thread)
+        local Running = coroutine.running()
     
         if (Status == "suspended") then
             task.cancel(Thread)
+        elseif (Running ~= Thread and IsDescendantOf(Running, Thread)) then
+            error("Cannot cancel a parent thread from a descendant thread")
         end
 
         for Index, FinishCallback in Target.FinishCallbacks do
@@ -206,7 +227,7 @@ function Async.Defer(Callback: ThreadFunction, ...): thread
     return task.defer(CaptureThread, coroutine.running(), Callback, ...)
 end
 
-local CancelParams = TypeGuard.Params(TypeGuard.Thread():HasStatus("Running"):Negate():FailMessage("Cannot cancel a thread from within itself - use 'return false, ...' instead"))
+local CancelParams = TypeGuard.Params(TypeGuard.Thread():IsRunning():Negate():FailMessage("Cannot cancel a thread from within itself - use 'return false, ...' instead"))
 -- Halts a task with a fail status (false, Result) and all descendant threads.
 function Async.Cancel(Thread: thread, Result: any?)
     CancelParams(Thread)
@@ -221,7 +242,7 @@ function Async.CancelRoot(Thread: thread, Result: any?)
     CancelRoot(Thread, Result)
 end
 
-local ResolveParams = TypeGuard.Params(TypeGuard.Thread():HasStatus("Running"):Negate():FailMessage("Cannot resolve a thread from within itself - use 'return true, ...' instead"))
+local ResolveParams = TypeGuard.Params(TypeGuard.Thread():IsRunning():Negate():FailMessage("Cannot resolve a thread from within itself - use 'return true, ...' instead"))
 -- Halts a task with a success status (true, Result) and all descendant threads.
 function Async.Resolve(Thread: thread, Result: any?)
     ResolveParams(Thread)
@@ -386,7 +407,11 @@ function Async.Timer(Interval: number, Call: ((number) -> ()), Name: string?): t
             while (true) do
                 debug.profilebegin(Name)
                 local CurrentTime = os.clock()
-                Call(CurrentTime - LastTime)
+
+                if (Call(CurrentTime - LastTime)) then
+                    return
+                end
+
                 debug.profileend()
                 task.wait(Interval)
                 LastTime = CurrentTime
@@ -397,7 +422,11 @@ function Async.Timer(Interval: number, Call: ((number) -> ()), Name: string?): t
     return Async.Spawn(function()
         while (true) do
             local CurrentTime = os.clock()
-            Call(CurrentTime - LastTime)
+
+            if (Call(CurrentTime - LastTime)) then
+                return
+            end
+        
             task.wait(Interval)
             LastTime = CurrentTime
         end
@@ -407,11 +436,21 @@ end
 local TimerAsyncParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function(), TypeGuard.String():Optional(), TypeGuard.Boolean():Optional())
 --- Creates a timer which spawns a new thread each call, preventing operations from blocking the timer thread.
 --- Optional UseTaskSpawn parameter will use task.spawn instead of Async.Spawn for less allocation.
-function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string?, UseTaskSpawn: boolean?): thread
+function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string?, UseTaskSpawn: boolean?): ((() -> ()), thread)
     TimerAsyncParams(Interval, Call, Name, UseTaskSpawn)
 
+    local Stop = false
+
+    local function StopFunction()
+        Stop = true
+    end
+
     if (UseTaskSpawn) then
-        return Async.Timer(Interval, function(DeltaTime)
+        return StopFunction, Async.Timer(Interval, function(DeltaTime)
+            if (Stop) then
+                return true
+            end
+
             task.spawn(Call, DeltaTime)
         end, Name)
     end
@@ -420,7 +459,11 @@ function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string
         Call(DeltaTime)
     end
 
-    return Async.Timer(Interval, function(DeltaTime)
+    return StopFunction, Async.Timer(Interval, function(DeltaTime)
+        if (Stop) then
+            return true
+        end
+
         Async.Spawn(Intermediary, DeltaTime)
     end, Name)
 end
