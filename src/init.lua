@@ -404,9 +404,17 @@ function Async.Timer(Interval: number, Call: ((number) -> ()), Name: string?): t
     end)
 end
 
+local TimerAsyncParams = TypeGuard.Params(TypeGuard.Number(), TypeGuard.Function(), TypeGuard.String():Optional(), TypeGuard.Boolean():Optional())
 --- Creates a timer which spawns a new thread each call, preventing operations from blocking the timer thread.
-function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string?): thread
-    TimerParams(Interval, Call, Name)
+--- Optional UseTaskSpawn parameter will use task.spawn instead of Async.Spawn for less allocation.
+function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string?, UseTaskSpawn: boolean?): thread
+    TimerAsyncParams(Interval, Call, Name, UseTaskSpawn)
+
+    if (UseTaskSpawn) then
+        return Async.Timer(Interval, function(DeltaTime)
+            task.spawn(Call, DeltaTime)
+        end, Name)
+    end
 
     local function Intermediary(_, DeltaTime)
         Call(DeltaTime)

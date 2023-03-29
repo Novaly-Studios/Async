@@ -1044,6 +1044,18 @@ return function()
             Async.Cancel(Thread)
             expect(Count).to.equal(1)
         end)
+
+        it("should pass difference in time as first arg for UseTaskSpawn", function()
+            local Count = 0
+            local Thread = Async.TimerAsync(0, function(Delta)
+                Count += 1
+                expect(Delta).to.be.a("number")
+            end)
+            
+            task.wait()
+            Async.Cancel(Thread)
+            expect(Count).to.equal(1)
+        end)
     end)
 
     describe("Async.Parent", function()
