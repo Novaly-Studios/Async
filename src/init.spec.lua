@@ -1032,6 +1032,18 @@ return function()
             Async.Cancel(Thread)
             expect(Count).to.equal(3)
         end)
+
+        it("should pass difference in time as first arg", function()
+            local Count = 0
+            local Thread = Async.TimerAsync(0, function(Delta)
+                Count += 1
+                expect(Delta).to.be.a("number")
+            end)
+            
+            task.wait()
+            Async.Cancel(Thread)
+            expect(Count).to.equal(1)
+        end)
     end)
 
     describe("Async.Parent", function()
@@ -1049,12 +1061,22 @@ return function()
             end).to.throw()
 
             expect(function()
-                Async.Parent()
+                Async.Spawn(function()
+                    Async.Parent()
+                end)
             end).never.to.throw()
 
             expect(function()
                 Async.Parent(Async.Spawn(function() end))
             end).never.to.throw()
+        end)
+
+        it("should throw for non Async-spawned threads given no args", function()
+            task.spawn(function()
+                expect(function()
+                    Async.Parent()
+                end).to.throw()
+            end)
         end)
 
         it("should return the parent thread given one Spawn call", function()
@@ -1107,9 +1129,11 @@ return function()
             end).never.to.throw()
         end)
 
-        it("should return a table of metadata or nil if the thread is not spawned through Async", function()
+        it("should return a table of metadata or throw if the thread is not spawned through Async", function()
             task.spawn(function()
-                expect(Async.GetMetadata()).to.equal(nil)
+                expect(function()
+                    Async.GetMetadata()
+                end).to.throw()
             end)
 
             Async.Spawn(function()

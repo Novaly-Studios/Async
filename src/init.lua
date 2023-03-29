@@ -6,10 +6,10 @@ end
 
 local TypeGuard = require(script.Parent:WaitForChild("TypeGuard"))
 
+local DEFAULT_THREAD_TIMEOUT = 30
+
 --- An extension of the Roblox task library with error handling, tree-based task termination, and await support.
 local Async = {}
-
-local DEFAULT_THREAD_TIMEOUT = 30
 
 type FinishCallback = ((Success: boolean, Result: any?) -> ())
 type ThreadMetadata = {
@@ -23,17 +23,11 @@ type ThreadMetadata = {
 type ThreadFunction = ((FinishCallback?, ...any) -> (boolean, any?))
 
 local ThreadMetadata: {[thread]: ThreadMetadata} = {}
-setmetatable(ThreadMetadata, {__mode = "k"})
+setmetatable(ThreadMetadata, {__mode = "ks"})
 Async._ThreadMetadata = ThreadMetadata
 
-local function GetOrCreateThreadMetadata(Thread: thread): ThreadMetadata
-    local Metadata = ThreadMetadata[Thread]
-
-    if (Metadata) then
-        return Metadata
-    end
-
-    Metadata = {
+local function CreateThreadMetadata(Thread: thread): ThreadMetadata
+    local Metadata = {
         FinishCallbacks = {};
         Children = {};
 
@@ -43,12 +37,21 @@ local function GetOrCreateThreadMetadata(Thread: thread): ThreadMetadata
     }
 
     ThreadMetadata[Thread] = Metadata
-
     return Metadata
 end
 
+local function AssertGetThreadMetadata(Thread: thread)
+    local Result = ThreadMetadata[Thread]
+
+    if (Result) then
+        return Result
+    end
+
+    error("Thread is nil")
+end
+
 local function RegisterOnFinish(Thread: thread, Callback: FinishCallback)
-    table.insert(GetOrCreateThreadMetadata(Thread).FinishCallbacks, Callback)
+    table.insert(ThreadMetadata[Thread].FinishCallbacks, Callback)
 end
 
 local function Finish(Thread: thread, FinishAll: boolean?, Success: boolean, Result: any?)
@@ -102,8 +105,18 @@ end
 
 local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...)
     local Running = coroutine.running()
-    GetOrCreateThreadMetadata(Running).Parent = ParentThread
-    table.insert(GetOrCreateThreadMetadata(ParentThread).Children, Running)
+
+    local RunningMetadata = CreateThreadMetadata(Running)
+    RunningMetadata.Parent = ParentThread
+
+    -- Multiple threads can have the same parent, so we need to check if parent metadata is already initialized
+    local ParentMetadata = ThreadMetadata[ParentThread]
+
+    if (not ParentMetadata) then
+        ParentMetadata = CreateThreadMetadata(ParentThread)
+    end
+
+    table.insert(ParentMetadata.Children, Running)
 
     local GotError
     local CallSuccess, ReportedSuccess, ReportedResult = xpcall(Callback, function(Error)
@@ -171,7 +184,7 @@ function Async.SpawnTimeLimit(Time: number, Callback: ThreadFunction, ...): thre
     local Thread = task.spawn(CaptureThread, coroutine.running(), Callback, ...)
 
     task.delay(Time, function()
-        if (GetOrCreateThreadMetadata(Thread).Success == nil) then
+        if (ThreadMetadata[Thread].Success == nil) then
             Cancel(Thread, "TIMEOUT")
         end
     end)
@@ -197,12 +210,14 @@ local CancelParams = TypeGuard.Params(TypeGuard.Thread():HasStatus("Running"):Ne
 -- Halts a task with a fail status (false, Result) and all descendant threads.
 function Async.Cancel(Thread: thread, Result: any?)
     CancelParams(Thread)
+    AssertGetThreadMetadata(Thread)
     Cancel(Thread, Result)
 end
 
 -- Halts a task with a fail status (false, Result).
 function Async.CancelRoot(Thread: thread, Result: any?)
     CancelParams(Thread)
+    AssertGetThreadMetadata(Thread)
     CancelRoot(Thread, Result)
 end
 
@@ -210,12 +225,14 @@ local ResolveParams = TypeGuard.Params(TypeGuard.Thread():HasStatus("Running"):N
 -- Halts a task with a success status (true, Result) and all descendant threads.
 function Async.Resolve(Thread: thread, Result: any?)
     ResolveParams(Thread)
+    AssertGetThreadMetadata(Thread)
     Resolve(Thread, Result)
 end
 
 -- Halts a task with a success status (true, Result).
 function Async.ResolveRoot(Thread: thread, Result: any?)
     ResolveParams(Thread)
+    AssertGetThreadMetadata(Thread)
     ResolveRoot(Thread, Result)
 end
 
@@ -226,7 +243,7 @@ function Async.Await(Thread: thread, Timeout: number?): (boolean, any?)
     Timeout = Timeout or DEFAULT_THREAD_TIMEOUT
 
     -- It might have finished before we even got here.
-    local Target = GetOrCreateThreadMetadata(Thread)
+    local Target = AssertGetThreadMetadata(Thread)
     local InitialSuccess = Target.Success
 
     if (InitialSuccess ~= nil) then
@@ -286,7 +303,6 @@ function Async.AwaitAll(Threads: {thread}, Timeout: number?): {{any}}
     AwaitAllParams(Threads, Timeout)
 
     local Length = #Threads
-
     local Running = coroutine.running()
     local Results = table.create(Length)
     local Count = 0
@@ -294,6 +310,8 @@ function Async.AwaitAll(Threads: {thread}, Timeout: number?): {{any}}
     local DidYield = false
 
     for Index, Value in Threads do
+        AssertGetThreadMetadata(Value)
+
         Async.Spawn(function()
             Results[Index] = {Async.Await(Value, Timeout)}
             Count += 1
@@ -324,6 +342,8 @@ function Async.AwaitFirst(Threads: {thread}, Timeout: number?): (boolean, any?)
     local Result
 
     for Index, Value in Threads do
+        AssertGetThreadMetadata(Value)
+
         Async.Spawn(function()
             if (Success == nil) then
                 local TempSuccess, TempResult = Async.Await(Value, Timeout)
@@ -388,23 +408,29 @@ end
 function Async.TimerAsync(Interval: number, Call: ((number) -> ()), Name: string?): thread
     TimerParams(Interval, Call, Name)
 
+    local function Intermediary(_, DeltaTime)
+        Call(DeltaTime)
+    end
+
     return Async.Timer(Interval, function(DeltaTime)
-        Async.Spawn(Call, DeltaTime)
+        Async.Spawn(Intermediary, DeltaTime)
     end, Name)
 end
 
 local ParentParams = TypeGuard.Params(TypeGuard.Thread():Optional())
 --- Gets the parent of a given thread, or the parent of the current thread if no thread is passed.
-function Async.Parent(Thread: thread?)
+function Async.Parent(Thread: thread?): thread
     ParentParams(Thread)
-    return GetOrCreateThreadMetadata(Thread or coroutine.running()).Parent
+    Thread = Thread or coroutine.running()
+    return AssertGetThreadMetadata(Thread).Parent
 end
 
 local GetMetadataParams = TypeGuard.Params(TypeGuard.Thread():Optional())
 --- Gets the metadata of a given thread, or the metadata of the current thread if no thread is passed.
-function Async.GetMetadata(Thread: thread?): ThreadMetadata?
+function Async.GetMetadata(Thread: thread?): ThreadMetadata
     GetMetadataParams(Thread)
-    return ThreadMetadata[Thread or coroutine.running()]
+    Thread = Thread or coroutine.running()
+    return AssertGetThreadMetadata(Thread)
 end
 
 --- Gets the number of threads currently allocated.
