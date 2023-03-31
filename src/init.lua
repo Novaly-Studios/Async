@@ -23,7 +23,7 @@ type ThreadMetadata = {
 type ThreadFunction = ((FinishCallback?, ...any) -> (boolean, any?))
 
 local ThreadMetadata: {[thread]: ThreadMetadata} = {}
-setmetatable(ThreadMetadata, {__mode = "ks"})
+setmetatable(ThreadMetadata, {__mode = "kvs"})
 Async._ThreadMetadata = ThreadMetadata
 
 local function CreateThreadMetadata(Thread: thread): ThreadMetadata
@@ -57,22 +57,12 @@ end
 local function IsDescendantOf(Thread1: thread, Thread2: thread): boolean
     local CurrentThread = Thread1
 
-    while (true) do
-        local Metadata = ThreadMetadata[CurrentThread]
-
-        if (not Metadata) then
-            return false
-        end
-
-        CurrentThread = Metadata.Parent
-
-        if (not CurrentThread) then
-            return false
-        end
-
+    while (CurrentThread) do
         if (CurrentThread == Thread2) then
             return true
         end
+
+        CurrentThread = ThreadMetadata[CurrentThread].Parent
     end
 
     return false
@@ -89,13 +79,8 @@ local function Finish(Thread: thread, FinishAll: boolean?, Success: boolean, Res
         Target.Success = Success
         Target.Result = Result
 
-        local Status = coroutine.status(Thread)
-        local Running = coroutine.running()
-    
-        if (Status == "suspended") then
+        if (coroutine.status(Thread) == "suspended") then
             task.cancel(Thread)
-        elseif (Running ~= Thread and IsDescendantOf(Running, Thread)) then
-            error("Cannot cancel a parent thread from a descendant thread")
         end
 
         for Index, FinishCallback in Target.FinishCallbacks do
@@ -233,10 +218,16 @@ function Async.Defer(Callback: ThreadFunction, ...): thread
     return task.defer(CaptureThread, coroutine.running(), Callback, ...)
 end
 
-local CancelParams = TypeGuard.Params(TypeGuard.Thread():IsRunning():Negate():FailMessage("Cannot cancel a thread from within itself - use 'return false, ...' instead"))
+local function AssertFinalizeRules(Thread: thread)
+    assert(Thread ~= coroutine.running(), "Cannot cancel a thread within itself.")
+    assert(IsDescendantOf(Thread, coroutine.running()), "Cannot cancel an ancestor thread from a descendant thread.")
+end
+
+local CancelParams = TypeGuard.Params(TypeGuard.Thread())
 -- Halts a task with a fail status (false, Result) and all descendant threads.
 function Async.Cancel(Thread: thread, Result: any?)
     CancelParams(Thread)
+    AssertFinalizeRules(Thread)
     AssertGetThreadMetadata(Thread)
     Cancel(Thread, Result)
 end
@@ -244,14 +235,16 @@ end
 -- Halts a task with a fail status (false, Result).
 function Async.CancelRoot(Thread: thread, Result: any?)
     CancelParams(Thread)
+    AssertFinalizeRules(Thread)
     AssertGetThreadMetadata(Thread)
     CancelRoot(Thread, Result)
 end
 
-local ResolveParams = TypeGuard.Params(TypeGuard.Thread():IsRunning():Negate():FailMessage("Cannot resolve a thread from within itself - use 'return true, ...' instead"))
+local ResolveParams = TypeGuard.Params(TypeGuard.Thread())
 -- Halts a task with a success status (true, Result) and all descendant threads.
 function Async.Resolve(Thread: thread, Result: any?)
     ResolveParams(Thread)
+    AssertFinalizeRules(Thread)
     AssertGetThreadMetadata(Thread)
     Resolve(Thread, Result)
 end
@@ -259,6 +252,7 @@ end
 -- Halts a task with a success status (true, Result).
 function Async.ResolveRoot(Thread: thread, Result: any?)
     ResolveParams(Thread)
+    AssertFinalizeRules(Thread)
     AssertGetThreadMetadata(Thread)
     ResolveRoot(Thread, Result)
 end
