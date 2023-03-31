@@ -62,7 +62,13 @@ local function IsDescendantOf(Thread1: thread, Thread2: thread): boolean
             return true
         end
 
-        CurrentThread = ThreadMetadata[CurrentThread].Parent
+        local Metadata = ThreadMetadata[CurrentThread]
+
+        if (not Metadata) then
+            return false
+        end
+
+        CurrentThread = Metadata.Parent
     end
 
     return false
@@ -194,9 +200,10 @@ function Async.SpawnTimeLimit(Time: number, Callback: ThreadFunction, ...): thre
     SpawnTimeLimitParams(Time, Callback)
 
     local Thread = task.spawn(CaptureThread, coroutine.running(), Callback, ...)
+    local Metadata = ThreadMetadata[Thread]
 
     task.delay(Time, function()
-        if (ThreadMetadata[Thread].Success == nil) then
+        if (Metadata.Success == nil) then
             Cancel(Thread, "TIMEOUT")
         end
     end)
@@ -219,8 +226,9 @@ function Async.Defer(Callback: ThreadFunction, ...): thread
 end
 
 local function AssertFinalizeRules(Thread: thread)
-    assert(Thread ~= coroutine.running(), "Cannot cancel a thread within itself.")
-    assert(IsDescendantOf(Thread, coroutine.running()), "Cannot cancel an ancestor thread from a descendant thread.")
+    local Running = coroutine.running()
+    assert(Thread ~= Running, "Cannot cancel a thread within itself.")
+    assert(ThreadMetadata[Running] == nil or IsDescendantOf(Thread, Running), "Cannot cancel an ancestor thread from a descendant thread.")
 end
 
 local CancelParams = TypeGuard.Params(TypeGuard.Thread())
