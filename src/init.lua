@@ -14,17 +14,16 @@ local Async = {}
 type FinishCallback = ((Success: boolean, Result: any?) -> ())
 type ThreadMetadata = {
     FinishCallbacks: {FinishCallback};
-    Children: {thread};
+    Children: {[thread]: true};
 
     Success: boolean?;
     Result: any?;
-    Parent: thread;
+    Parent: {Value: thread};
 }
 type ThreadFunction = ((FinishCallback?, ...any) -> (boolean, any?))
 
 local ThreadMetadata: {[thread]: ThreadMetadata} = {}
-setmetatable(ThreadMetadata, {__mode = "kvs"})
-Async._ThreadMetadata = ThreadMetadata
+setmetatable(ThreadMetadata, {__mode = "ks"})
 
 local function CreateThreadMetadata(Thread: thread): ThreadMetadata
     local Metadata = {
@@ -33,10 +32,11 @@ local function CreateThreadMetadata(Thread: thread): ThreadMetadata
 
         Success = nil;
         Result = nil;
-        Parent = nil;
+        Parent = setmetatable({Value = nil}, {__mode = "v"});
     }
 
     ThreadMetadata[Thread] = Metadata
+
     return Metadata
 end
 
@@ -68,7 +68,7 @@ local function IsDescendantOf(Thread1: thread, Thread2: thread): boolean
             return false
         end
 
-        CurrentThread = Metadata.Parent
+        CurrentThread = Metadata.Parent.Value
     end
 
     return false
@@ -99,8 +99,12 @@ local function Finish(Thread: thread, FinishAll: boolean?, Success: boolean, Res
     end
 
     if (FinishAll) then
-        for _, Child in Target.Children do
-            Finish(Child, true, Success, Result)
+        local Children = Target.Children
+
+        if (Children) then
+            for Child in Children do
+                Finish(Child, true, Success, Result)
+            end
         end
     end
 end
@@ -125,7 +129,7 @@ local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...
     local Running = coroutine.running()
 
     local RunningMetadata = CreateThreadMetadata(Running)
-    RunningMetadata.Parent = ParentThread
+    RunningMetadata.Parent.Value = ParentThread
 
     -- Multiple threads can have the same parent, so we need to check if parent metadata is already initialized
     local ParentMetadata = ThreadMetadata[ParentThread]
@@ -134,7 +138,13 @@ local function CaptureThread(ParentThread: thread, Callback: ThreadFunction, ...
         ParentMetadata = CreateThreadMetadata(ParentThread)
     end
 
-    table.insert(ParentMetadata.Children, Running)
+    local Children = ParentMetadata.Children
+
+    if (getmetatable(Children) == nil) then
+        setmetatable(Children, {__mode = "ks"})
+    end
+
+    Children[Running] = true
 
     local GotError
     local CallSuccess, ReportedSuccess, ReportedResult = xpcall(Callback, function(Error)
@@ -481,7 +491,7 @@ local ParentParams = TypeGuard.Params(TypeGuard.Thread():Optional())
 function Async.Parent(Thread: thread?): thread
     ParentParams(Thread)
     Thread = Thread or coroutine.running()
-    return AssertGetThreadMetadata(Thread).Parent
+    return AssertGetThreadMetadata(Thread).Parent.Value
 end
 
 local GetMetadataParams = TypeGuard.Params(TypeGuard.Thread():Optional())
