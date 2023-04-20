@@ -58,6 +58,7 @@ local function RegisterOnFinish(Thread: thread, Callback: FinishCallback)
 
     if (FinishCallbacks) then
         table.insert(FinishCallbacks, Callback)
+        return
     end
 
     Metadata.FinishCallbacks = {Callback}
