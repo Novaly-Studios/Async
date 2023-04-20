@@ -18,6 +18,36 @@ return function()
         end)
     end)
 
+    describe("Async.OnFinish", function()
+        it("should reject non-functions as first arg", function()
+            expect(function()
+                Async.OnFinish(1)
+            end).to.throw()
+
+            expect(function()
+                Async.OnFinish("test")
+            end).to.throw()
+
+            expect(function()
+                Async.OnFinish({})
+            end).to.throw()
+        end)
+
+        it("should throw when called in a non Async-created thread", function()
+            expect(function()
+                Async.OnFinish(function() end)
+            end).to.throw()
+        end)
+
+        it("should accept functions as first arg when called in an Async-created thread", function()
+            expect(function()
+                Async.Spawn(function()
+                    Async.OnFinish(function() end)
+                end)
+            end).never.to.throw()
+        end)
+    end)
+
     describe("Async.Spawn", function()
         it("should reject non-functions as first arg", function()
             expect(function()
@@ -53,21 +83,23 @@ return function()
             expect(Async.Spawn(function() end)).to.be.a("thread")
         end)
 
-        it("should pass an OnFinish callback as first arg", function()
-            local GotType = ""
+        it("should pass all args in order", function()
+            local Results
 
-            Async.Spawn(function(OnFinish)
-                GotType = typeof(OnFinish)
-            end)
+            Async.Spawn(function(...)
+                Results = {...}
+            end, 1, 2, 3)
 
-            expect(GotType).to.equal("function")
+            expect(Results[1]).to.equal(1)
+            expect(Results[2]).to.equal(2)
+            expect(Results[3]).to.equal(3)
         end)
 
         it("should call OnFinish with whatever returns from a regularly terminating thread", function()
             local Success, Result
 
-            Async.Spawn(function(OnFinish)
-                OnFinish(function(GotSuccess, GotResult)
+            Async.Spawn(function()
+                Async.OnFinish(function(GotSuccess, GotResult)
                     Success = GotSuccess
                     Result = GotResult
                 end)
@@ -82,8 +114,8 @@ return function()
         it("should call OnFinish if the thread yields", function()
             local Success, Result
 
-            Async.Spawn(function(OnFinish)
-                OnFinish(function(GotSuccess, GotResult)
+            Async.Spawn(function()
+                Async.OnFinish(function(GotSuccess, GotResult)
                     Success = GotSuccess
                     Result = GotResult
                 end)
@@ -102,8 +134,8 @@ return function()
         it("should call OnFinish if the thread errors", function()
             local Success, Result
 
-            Async.Spawn(function(OnFinish)
-                OnFinish(function(GotSuccess, GotResult)
+            Async.Spawn(function()
+                Async.OnFinish(function(GotSuccess, GotResult)
                     Success = GotSuccess
                     Result = GotResult
                 end)
@@ -118,8 +150,8 @@ return function()
         it("should call OnFinish if the thread errors and yields", function()
             local Success, Result
 
-            Async.Spawn(function(OnFinish)
-                OnFinish(function(GotSuccess, GotResult)
+            Async.Spawn(function()
+                Async.OnFinish(function(GotSuccess, GotResult)
                     Success = GotSuccess
                     Result = GotResult
                 end)
@@ -142,13 +174,13 @@ return function()
             local Finish1 = false
             local Finish2 = false
 
-            local Thread = Async.Spawn(function(OnFinish1)
-                OnFinish1(function()
+            local Thread = Async.Spawn(function()
+                Async.OnFinish(function()
                     Call1 = true
                 end)
 
-                Async.Spawn(function(OnFinish2)
-                    OnFinish2(function()
+                Async.Spawn(function()
+                    Async.OnFinish(function()
                         Call2 = true
                     end)
 
@@ -181,13 +213,13 @@ return function()
             local Finish1 = false
             local Finish2 = false
 
-            local Thread = Async.Spawn(function(OnFinish1)
-                OnFinish1(function()
+            local Thread = Async.Spawn(function()
+                Async.OnFinish(function()
                     Call1 = true
                 end)
 
-                Async.Spawn(function(OnFinish2)
-                    OnFinish2(function()
+                Async.Spawn(function()
+                    Async.OnFinish(function()
                         Call2 = true
                     end)
 
@@ -278,8 +310,8 @@ return function()
             local Cancelled
 
             Async.SpawnTimeLimit(0, function()
-                Async.Spawn(function(OnFinish)
-                    OnFinish(function(Success)
+                Async.Spawn(function()
+                    Async.OnFinish(function(Success)
                         if (not Success) then
                             Cancelled = true
                         end
@@ -302,8 +334,8 @@ return function()
             local Cancelled
 
             Async.SpawnTimedCancel(0, function()
-                Async.Spawn(function(OnFinish)
-                    OnFinish(function(Success)
+                Async.Spawn(function()
+                    Async.OnFinish(function(Success)
                         if (not Success) then
                             Cancelled = true
                         end
@@ -506,8 +538,8 @@ return function()
             Async.Spawn(function()
                 local Success, Result
 
-                local Thread = Async.Spawn(function(OnFinish)
-                    OnFinish(function(GotSuccess, GotResult)
+                local Thread = Async.Spawn(function()
+                    Async.OnFinish(function(GotSuccess, GotResult)
                         Success = GotSuccess
                         Result = GotResult
                     end)
@@ -530,13 +562,13 @@ return function()
         it("should cancel all sub-threads", function()
             local FirstSuccess, SecondSuccess
 
-            local Main = Async.Spawn(function(OnFinish)
-                OnFinish(function(Success)
+            local Main = Async.Spawn(function()
+                Async.OnFinish(function(Success)
                     FirstSuccess = Success
                 end)
 
-                Async.Spawn(function(OnFinish)
-                    OnFinish(function(Success)
+                Async.Spawn(function()
+                    Async.OnFinish(function(Success)
                         SecondSuccess = Success
                     end)
 
@@ -561,13 +593,13 @@ return function()
         it("should only cancel or resolve a thread and sub-threads once", function()
             local FirstSuccess, SecondSuccess
 
-            local Main = Async.Spawn(function(OnFinish)
-                OnFinish(function(Success)
+            local Main = Async.Spawn(function()
+                Async.OnFinish(function(Success)
                     FirstSuccess = Success
                 end)
 
-                Async.Spawn(function(OnFinish)
-                    OnFinish(function(Success)
+                Async.Spawn(function()
+                    Async.OnFinish(function(Success)
                         SecondSuccess = Success
                     end)
 
@@ -593,6 +625,13 @@ return function()
     end)
 
     describe("Async.CancelRoot", function()
+        it("should reject root threads as first arg", function()
+            expect(function()
+                Async.Spawn(function() end)
+                Async.CancelRoot(coroutine.running())
+            end).to.throw()
+        end)
+
         it("should only cancel the top-level thread and not its descendants", function()
             local SubThread
             local MainThread = Async.Spawn(function()
@@ -653,8 +692,8 @@ return function()
             Async.Spawn(function()
                 local Success, Result
 
-                local Thread = Async.Spawn(function(OnFinish)
-                    OnFinish(function(GotSuccess, GotResult)
+                local Thread = Async.Spawn(function()
+                    Async.OnFinish(function(GotSuccess, GotResult)
                         Success = GotSuccess
                         Result = GotResult
                     end)
@@ -676,6 +715,13 @@ return function()
     end)
 
     describe("Async.ResolveRoot", function()
+        it("should reject root threads as first arg", function()
+            expect(function()
+                Async.Spawn(function() end)
+                Async.ResolveRoot(coroutine.running())
+            end).to.throw()
+        end)
+
         it("should only resolve the top-level thread and not its descendants", function()
             local SubThread
             local MainThread = Async.Spawn(function()
@@ -714,6 +760,13 @@ return function()
             expect(function()
                 Async.Await(Async.Spawn(function() end))
             end).never.to.throw()
+        end)
+
+        it("should reject root threads as first arg", function()
+            expect(function()
+                Async.Spawn(function() end)
+                Async.Await(coroutine.running())
+            end).to.throw()
         end)
 
         it("should return for immediate execution threads", function()
@@ -779,6 +832,13 @@ return function()
             expect(function()
                 Async.AwaitAll({Async.Spawn(function() end)})
             end).never.to.throw()
+        end)
+
+        it("should reject root threads as first arg", function()
+            expect(function()
+                Async.Spawn(function() end)
+                Async.AwaitAll({coroutine.running()})
+            end).to.throw()
         end)
 
         it("should return a table of results given one thread", function()
@@ -884,6 +944,13 @@ return function()
             end).never.to.throw()
         end)
 
+        it("should reject root threads as first arg", function()
+            expect(function()
+                Async.Spawn(function() end)
+                Async.AwaitFirst({coroutine.running()})
+            end).to.throw()
+        end)
+
         it("should return the results of a thread", function()
             local Success, Result = Async.AwaitFirst({
                 Async.Spawn(function()
@@ -964,12 +1031,8 @@ return function()
             end).to.throw()
 
             expect(function()
-                Async.Timer(function() end, function() end)
+                Async.Timer(function() end, function() end)()
             end).to.throw()
-
-            expect(function()
-                task.cancel(Async.Timer(1, function() end))
-            end).never.to.throw()
         end)
 
         it("should accept an optional third argument as an optional string", function()
@@ -978,19 +1041,19 @@ return function()
             end).to.throw()
 
             expect(function()
-                task.cancel(Async.Timer(1, function() end, "test"))
+                Async.Timer(1, function() end, "test")()
             end).never.to.throw()
         end)
 
         it("should activate twice per second for 0.5s interval", function()
             local Ran = 0
 
-            local Thread = Async.Timer(0.5, function()
+            local Stop = Async.Timer(0.5, function()
                 Ran += 1
             end)
 
             task.wait(1)
-            task.cancel(Thread)
+            Stop()
 
             expect(Ran).to.equal(2)
         end)
@@ -998,12 +1061,12 @@ return function()
         it("should activate thrice per second for 1/3s interval", function()
             local Ran = 0
 
-            local Thread = Async.Timer(1/3, function()
+            local Stop = Async.Timer(1/3, function()
                 Ran += 1
             end)
 
             task.wait(1)
-            task.cancel(Thread)
+            Stop()
 
             expect(Ran).to.equal(3)
         end)
@@ -1011,12 +1074,12 @@ return function()
         it("should stop activating when cancelled", function()
             local Ran = 0
 
-            local Thread = Async.Timer(0.1, function()
+            local Stop = Async.Timer(0.1, function()
                 Ran += 1
             end)
 
             task.wait(0.2)
-            task.cancel(Thread)
+            Stop()
             task.wait(0.2)
 
             expect(Ran).to.equal(2)

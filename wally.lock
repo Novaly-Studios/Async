@@ -3,11 +3,11 @@
 registry = "test"
 
 [[package]]
-name = "tpc9000/cleaner"
-version = "0.1.2"
-dependencies = [["TypeGuard", "tpc9000/typeguard@3.0.1"]]
+name = "tpc9000/async"
+version = "0.2.0"
+dependencies = [["TypeGuard", "tpc9000/typeguard@4.0.0"]]
 
 [[package]]
 name = "tpc9000/typeguard"
-version = "3.0.1"
+version = "4.0.0"
 dependencies = []

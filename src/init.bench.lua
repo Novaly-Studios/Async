@@ -1,34 +1,42 @@
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
+    local Root = ReplicatedFirst:WaitForChild("Async")
+        local TypeGuard = require(Root.Parent.TypeGuard)
+        local Async = require(Root)
 
-local Async = require(ReplicatedFirst:WaitForChild("Async"))
+local function GenerateBenchmarks(Context: string, AsyncSpawn)
+    return {
+        [Context .. "Spawn"] = function()
+            for _ = 1, 100 do
+                AsyncSpawn(function() end)
+            end
+        end;
+    }
+end
 
-local TaskSpawn = task.spawn
-local AsyncSpawn = Async.Spawn
+local CombinedBenchmarks = {}
+local OldAsync = Root:FindFirstChild("Old")
+
+if (OldAsync) then
+    for Name, Test in GenerateBenchmarks("OldAsync", require(OldAsync).Spawn) do
+        CombinedBenchmarks[Name] = Test
+    end
+end
+
+for Name, Test in GenerateBenchmarks(">NewAsync", Async.Spawn) do
+    CombinedBenchmarks[Name] = Test
+end
+
+for Name, Test in GenerateBenchmarks("RobloxAsync", task.spawn) do
+    CombinedBenchmarks[Name] = Test
+end
+
+TypeGuard.SetContextEnabled("Async", false)
+TypeGuard.SetContextEnabled("Old", false)
 
 return {
     ParameterGenerator = function()
         return
     end;
 
-    Functions = {
-        ["task.spawn / Complete"] = function()
-            for _ = 1, 100 do
-                TaskSpawn(function() end)
-            end
-        end;
-
-        ["Async.Spawn / Complete"] = function()
-            for _ = 1, 100 do
-                AsyncSpawn(function() end)
-            end
-        end;
-
-        ["task.spawn / Error"] = function()
-            TaskSpawn(function() error("") end)
-        end;
-
-        ["Async.Spawn / Error"] = function()
-            AsyncSpawn(function() error("") end)
-        end;
-    };
+    Functions = CombinedBenchmarks;
 }
