@@ -9,7 +9,7 @@ local function Animate(Item, Damping, Frequency, Properties)
     -- ...
 end
 
-local TestAnimation = Async.Spawn(function(OnFinish)
+local TestAnimation = Async.Spawn(function()
     local function InitialState()
         Animate(Workspace.Part1, 1, 5, {
             Position = Vector3.new(0, 10, 0);
@@ -19,7 +19,7 @@ local TestAnimation = Async.Spawn(function(OnFinish)
         })
     end
 
-    OnFinish(InitialState)
+    Async.OnFinish(InitialState)
     InitialState()
 
     local function AnimatePart1()
