@@ -65,10 +65,10 @@ local Success, Result = Async.Await(Async.Spawn(function()
     task.wait(2)
 
     if (Value > 0.5) then
-        return false, Value
+        return Value
     end
 
-    return true, Value
+    error("<FAIL_TAG>") -- Surrounding alphanumeric + underscore with < & > will capture the tag in the error message without all the mess.
 end))
 
 print(Success, Result)
@@ -80,10 +80,10 @@ print(Success, Result)
 print(Async.AwaitAll({
     Async.Spawn(function()
         task.wait(1)
-        return true, "Delayed"
+        return "Delayed"
     end);
     Async.Spawn(function()
-        return true, "Immediate"
+        return "Immediate"
     end);
 }))
 --> {{true, "Immediate"}, {true, "Delayed"}}
@@ -95,10 +95,10 @@ print(Async.AwaitAll({
 print(Async.AwaitFirst({
     Async.Spawn(function()
         task.wait(1)
-        return true, "Last"
+        return "Last"
     end);
     Async.Spawn(function()
-        return true, "First"
+        return "First"
     end);
 }))
 --> true, "First"
@@ -108,7 +108,7 @@ print(Async.AwaitFirst({
 
 ```lua
 local Characters = {}
-local Thread = Async.Timer(1, function()
+local Stop = Async.Timer(1, function()
     table.clear(Characters)
 
     for _, Player in game.Players:GetChildren() do
@@ -123,5 +123,5 @@ local Thread = Async.Timer(1, function()
 end, "FindPlayers")
 -- "FindPlayers" will show up in the Microprofiler, though always ensure the timer does not block if the tag is specified
 
-Async.Delay(5, Async.Cancel, Thread)
+Async.Delay(5, Stop)
 ```

@@ -3,22 +3,11 @@ it = it or anyfn
 expect = expect or anyfn
 describe = describe or anyfn
 
+local Async = require(script.Parent.Async)
+Async.SetErrorReporter(nil)
+
 return function()
-    local Async = require(script.Parent)
-
-    describe("Async.Count", function()
-        it("should return 0 when no threads are running", function()
-            expect(Async.Count()).to.equal(0)
-        end)
-
-        it("should return 3 for 2 spawned threads (given existence of parent thread too)", function()
-            Async.Spawn(function() end)
-            Async.Spawn(function() end)
-            expect(Async.Count()).to.equal(3)
-        end)
-    end)
-
-    describe("Async.OnFinish", function()
+    describe("OnFinish", function()
         it("should reject non-functions as first arg", function()
             expect(function()
                 Async.OnFinish(1)
@@ -33,12 +22,6 @@ return function()
             end).to.throw()
         end)
 
-        it("should throw when called in a non Async-created thread", function()
-            expect(function()
-                Async.OnFinish(function() end)
-            end).to.throw()
-        end)
-
         it("should accept functions as first arg when called in an Async-created thread", function()
             expect(function()
                 Async.Spawn(function()
@@ -48,7 +31,7 @@ return function()
         end)
     end)
 
-    describe("Async.Spawn", function()
+    describe("Spawn", function()
         it("should reject non-functions as first arg", function()
             expect(function()
                 Async.Spawn(1)
@@ -104,7 +87,7 @@ return function()
                     Result = GotResult
                 end)
 
-                return true, "Test"
+                return "Test"
             end)
 
             expect(Success).to.equal(true)
@@ -121,7 +104,7 @@ return function()
                 end)
 
                 task.wait()
-                return true, "Test"
+                return "Test"
             end)
 
             expect(Success).to.equal(nil)
@@ -246,114 +229,94 @@ return function()
         end)
     end)
 
-    describe("Async.SpawnTimeLimit", function()
-        it("should reject non-numbers as first arg", function()
+    describe("SpawnTimed", function()
+        it("should accept a function as first arg and reject non-functions", function()
             expect(function()
-                Async.SpawnTimeLimit("test")
+                Async.SpawnTimed(1)
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimeLimit({})
+                Async.SpawnTimed("test")
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimeLimit(function() end)
-            end).to.throw()
-        end)
-
-        it("should reject non-functions as second arg", function()
-            expect(function()
-                Async.SpawnTimeLimit(1, 1)
+                Async.SpawnTimed({})
             end).to.throw()
 
             expect(function()
-                Async.SpawnTimeLimit(1, "test")
-            end).to.throw()
-
-            expect(function()
-                Async.SpawnTimeLimit(1, {})
-            end).to.throw()
-        end)
-
-        it("should accept a number as first arg & a function as second arg", function()
-            expect(function()
-                Async.SpawnTimeLimit(1, function() end)
+                Async.SpawnTimed(function() end)
             end).never.to.throw()
         end)
 
-        it("should spawn a thread immediately", function()
+        it("should accept a timeout number as second arg and reject non-numbers", function()
+            expect(function()
+                Async.SpawnTimed(function() end, 1)
+            end).never.to.throw()
+
+            expect(function()
+                Async.SpawnTimed(function() end, "test")
+            end).to.throw()
+
+            expect(function()
+                Async.SpawnTimed(function() end, {})
+            end).to.throw()
+        end)
+
+        it("should spawn a new thread", function()
             local Finished = false
 
-            Async.SpawnTimeLimit(1, function()
+            local Thread = Async.SpawnTimed(function()
+                task.wait()
                 Finished = true
             end)
 
+            expect(Thread).to.be.ok()
+            expect(Thread).to.be.a("thread")
+            expect(Finished).to.equal(false)
+            task.wait()
             expect(Finished).to.equal(true)
         end)
 
-        it("should terminate a thread which has been running for more than the timeout", function()
-            local Finished = false
+        it("should terminate all sub-threads after the timeout", function()
+            local Terminate1 = false
+            local Terminate2 = false
+            local Terminate3 = false
 
-            Async.SpawnTimeLimit(0, function()
-                task.wait()
-                task.wait()
-                Finished = true
-            end)
+            Async.SpawnTimed(function()
+                Async.OnFinish(function()
+                    Terminate1 = true
+                end)
 
-            expect(Finished).to.equal(false)
-            task.wait()
-            task.wait()
-            expect(Finished).to.equal(false)
-        end)
-
-        it("should not cancel sub-threads if the main thread does not timeout", function()
-            local Cancelled
-
-            Async.SpawnTimeLimit(0, function()
                 Async.Spawn(function()
-                    Async.OnFinish(function(Success)
-                        if (not Success) then
-                            Cancelled = true
-                        end
+                    Async.OnFinish(function()
+                        Terminate2 = true
                     end)
 
-                    task.wait()
-                    task.wait()
-                end)
-            end)
+                    Async.Spawn(function()
+                        Async.OnFinish(function()
+                            Terminate3 = true
+                        end)
 
-            expect(Cancelled).to.equal(nil)
+                        task.wait(1)
+                    end)
+
+                    task.wait(1)
+                end)
+
+                task.wait(1)
+            end, 0)
+
+            expect(Terminate1).to.equal(false)
+            expect(Terminate2).to.equal(false)
+            expect(Terminate3).to.equal(false)
             task.wait()
-            task.wait()
-            expect(Cancelled).to.equal(nil)
+            expect(Terminate1).to.equal(true)
+            expect(Terminate2).to.equal(true)
+            expect(Terminate3).to.equal(true)
         end)
     end)
 
-    describe("Async.SpawnTimedCancel", function()
-        it("should cancel sub-threads if the main thread does not timeout", function()
-            local Cancelled
-
-            Async.SpawnTimedCancel(0, function()
-                Async.Spawn(function()
-                    Async.OnFinish(function(Success)
-                        if (not Success) then
-                            Cancelled = true
-                        end
-                    end)
-
-                    task.wait()
-                    task.wait()
-                end)
-            end)
-
-            expect(Cancelled).to.equal(nil)
-            task.wait()
-            task.wait()
-            expect(Cancelled).to.equal(true)
-        end)
-    end)
-
-    describe("Async.Delay", function()
+    describe("Delay", function()
         it("should reject non-numbers as first arg", function()
             expect(function()
                 Async.Delay("test")
@@ -405,7 +368,7 @@ return function()
         end)
     end)
 
-    describe("Async.Defer", function()
+    describe("Defer", function()
         it("should reject non-functions as first arg", function()
             expect(function()
                 Async.Defer(1)
@@ -493,7 +456,7 @@ return function()
         end)
     end)
 
-    describe("Async.Cancel", function()
+    describe("Cancel", function()
         it("should reject non-threads as first arg", function()
             expect(function()
                 Async.Cancel(1)
@@ -624,14 +587,7 @@ return function()
         end)
     end)
 
-    describe("Async.CancelRoot", function()
-        it("should reject root threads as first arg", function()
-            expect(function()
-                Async.Spawn(function() end)
-                Async.CancelRoot(coroutine.running())
-            end).to.throw()
-        end)
-
+    describe("CancelRoot", function()
         it("should only cancel the top-level thread and not its descendants", function()
             local SubThread
             local MainThread = Async.Spawn(function()
@@ -647,7 +603,7 @@ return function()
         end)
     end)
 
-    describe("Async.Resolve", function()
+    describe("Resolve", function()
         it("should reject non-threads as first arg", function()
             expect(function()
                 Async.Resolve(1)
@@ -712,16 +668,30 @@ return function()
                 expect(Result).to.equal("CustomSuccess")
             end)
         end)
+
+        it("should recursively terminate threads", function()
+            local Results = table.create(2)
+
+            Async.Defer(function()
+                Async.OnFinish(function(Success, Result)
+                    Results[1] = {Success, Result}
+                end)
+
+                Async.Spawn(function()
+                    task.wait()
+
+                    Async.OnFinish(function(Success, Result)
+                        Results[2] = {Success, Result}
+                    end)
+                end)
+            end)
+
+            expect(Results[1]).to.equal(nil)
+            expect(Results[2]).to.equal(nil)
+        end)
     end)
 
-    describe("Async.ResolveRoot", function()
-        it("should reject root threads as first arg", function()
-            expect(function()
-                Async.Spawn(function() end)
-                Async.ResolveRoot(coroutine.running())
-            end).to.throw()
-        end)
-
+    describe("ResolveRoot", function()
         it("should only resolve the top-level thread and not its descendants", function()
             local SubThread
             local MainThread = Async.Spawn(function()
@@ -737,7 +707,7 @@ return function()
         end)
     end)
 
-    describe("Async.Await", function()
+    describe("Await", function()
         it("should reject non-threads as first arg", function()
             expect(function()
                 Async.Await(1)
@@ -762,16 +732,9 @@ return function()
             end).never.to.throw()
         end)
 
-        it("should reject root threads as first arg", function()
-            expect(function()
-                Async.Spawn(function() end)
-                Async.Await(coroutine.running())
-            end).to.throw()
-        end)
-
         it("should return for immediate execution threads", function()
             local Success, Result = Async.Await(Async.Spawn(function()
-                return true, "Success"
+                return "Success"
             end))
 
             expect(Success).to.equal(true)
@@ -781,7 +744,7 @@ return function()
         it("should return for yielding threads", function()
             local Success, Result = Async.Await(Async.Spawn(function()
                 task.wait()
-                return true, "Success"
+                return "Success"
             end))
 
             expect(Success).to.equal(true)
@@ -805,7 +768,7 @@ return function()
         end)
     end)
 
-    describe("Async.AwaitAll", function()
+    describe("AwaitAll", function()
         it("should reject non-tables as first arg", function()
             expect(function()
                 Async.AwaitAll(1)
@@ -834,17 +797,10 @@ return function()
             end).never.to.throw()
         end)
 
-        it("should reject root threads as first arg", function()
-            expect(function()
-                Async.Spawn(function() end)
-                Async.AwaitAll({coroutine.running()})
-            end).to.throw()
-        end)
-
         it("should return a table of results given one thread", function()
             local Results = Async.AwaitAll({
                 Async.Spawn(function()
-                    return true, "Success"
+                    return "Success"
                 end)
             })
 
@@ -859,10 +815,10 @@ return function()
         it("should return a table of results given multiple threads", function()
             local Results = Async.AwaitAll({
                 Async.Spawn(function()
-                    return true, "Success"
+                    return "Success"
                 end),
                 Async.Spawn(function()
-                    return false, "Failure"
+                    error("Failure")
                 end)
             })
 
@@ -875,7 +831,7 @@ return function()
             expect(Results[2]).to.be.ok()
             expect(Results[2]).to.be.a("table")
             expect(Results[2][1]).to.equal(false)
-            expect(Results[2][2]).to.equal("Failure")
+            expect(Results[2][2]:match("Failure")).to.equal("Failure")
         end)
 
         it("should return a table of results for multiple yielding threads and wait for all of them", function()
@@ -885,12 +841,12 @@ return function()
                 Async.Spawn(function()
                     task.wait()
                     Ran += 1
-                    return true, "Success"
+                    return "Success"
                 end),
                 Async.Spawn(function()
                     task.wait()
                     Ran += 1
-                    return false, "Failure"
+                    error("Failure")
                 end),
                 Async.Spawn(function()
                     task.wait(0.1)
@@ -909,11 +865,11 @@ return function()
             expect(Results[2]).to.be.ok()
             expect(Results[2]).to.be.a("table")
             expect(Results[2][1]).to.equal(false)
-            expect(Results[2][2]).to.equal("Failure")
+            expect(Results[2][2]:match("Failure")).to.equal("Failure")
         end)
     end)
 
-    describe("Async.AwaitFirst", function()
+    describe("AwaitFirst", function()
         it("should reject non-tables as first arg", function()
             expect(function()
                 Async.AwaitFirst(1)
@@ -944,17 +900,10 @@ return function()
             end).never.to.throw()
         end)
 
-        it("should reject root threads as first arg", function()
-            expect(function()
-                Async.Spawn(function() end)
-                Async.AwaitFirst({coroutine.running()})
-            end).to.throw()
-        end)
-
         it("should return the results of a thread", function()
             local Success, Result = Async.AwaitFirst({
                 Async.Spawn(function()
-                    return true, "Success"
+                    return "Success"
                 end)
             })
 
@@ -965,10 +914,10 @@ return function()
         it("should return the results of the first thread given immediate execution", function()
             local Success, Result = Async.AwaitFirst({
                 Async.Spawn(function()
-                    return true, "Success"
+                    return "Success"
                 end),
                 Async.Spawn(function()
-                    return false, "Failure"
+                    error("Failure")
                 end)
             })
 
@@ -980,16 +929,16 @@ return function()
             local Success, Result = Async.AwaitFirst({
                 Async.Spawn(function()
                     task.wait(0.3)
-                    return true, "Success"
+                    return "Success"
                 end),
                 Async.Spawn(function()
                     task.wait()
-                    return false, "Failure"
+                    error("Failure")
                 end)
             })
 
             expect(Success).to.equal(false)
-            expect(Result).to.equal("Failure")
+            expect(Result:match("Failure")).to.equal("Failure")
         end)
 
         it("should return failure and timeout code given a timeout", function()
@@ -1004,7 +953,7 @@ return function()
         end)
     end)
 
-    describe("Async.Timer", function()
+    describe("Timer", function()
         it("should only accept a number & function as first 2 args", function()
             expect(function()
                 Async.Timer(1)
@@ -1086,7 +1035,7 @@ return function()
         end)
     end)
 
-    describe("Async.TimerAsync", function()
+    describe("TimerAsync", function()
         it("should only accept a number & function as first 2 args", function()
             expect(function()
                 Async.TimerAsync(1)
@@ -1171,7 +1120,7 @@ return function()
         end)
     end)
 
-    describe("Async.Parent", function()
+    describe("Parent", function()
         it("should accept a thread or nil as the first arg only", function()
             expect(function()
                 Async.Parent(1)
@@ -1231,41 +1180,245 @@ return function()
         end)
     end)
 
-    describe("Async.GetMetadata", function()
-        it("should accept a thread or nil as the first arg only", function()
+    describe("Results", function()
+        it("should accept a thread as the first arg only", function()
             expect(function()
-                Async.GetMetadata(1)
+                Async.Results(1)
             end).to.throw()
 
             expect(function()
-                Async.GetMetadata("test")
+                Async.Results("test")
             end).to.throw()
             
             expect(function()
-                Async.GetMetadata({})
+                Async.Results({})
             end).to.throw()
 
             expect(function()
-                Async.GetMetadata()
-            end).never.to.throw()
+                Async.Results()
+            end).to.throw()
 
             expect(function()
-                Async.GetMetadata(Async.Spawn(function() end))
+                Async.Results(Async.Spawn(function() end))
             end).never.to.throw()
         end)
 
-        it("should return a table of metadata or throw if the thread is not spawned through Async", function()
-            task.spawn(function()
-                expect(function()
-                    Async.GetMetadata()
-                end).to.throw()
+        it("should return a table of results if the thread has finished", function()
+            local Thread = Async.Spawn(function()
+                return 123
             end)
 
-            Async.Spawn(function()
-                expect(Async.GetMetadata()).to.be.a("table")
+            local Success, Result = Async.Results(Thread)
+            expect(Success).to.equal(true)
+            expect(Result).to.equal(123)
+        end)
+
+        it("should return nil if the thread has not finished", function()
+            local Thread = Async.Spawn(function()
+                task.wait(1)
+                return 123
             end)
 
-            expect(Async.GetMetadata(Async.Spawn(function() end))).to.be.a("table")
+            expect(Async.Results(Thread)).to.equal(nil)
+        end)
+    end)
+
+    describe("FireSignal", function()
+        it("should fire a signal to all running descendant threads", function()
+            local Count = 0
+            local Root = Async.Spawn(function()
+                Async.OnSignal(function(Data)
+                    Count += (Data == "Test" and 1 or 0)
+                end)
+
+                Async.Spawn(function()
+                    Async.OnSignal(function(Data)
+                        Count += (Data == "Test" and 1 or 0)
+                    end)
+
+                    coroutine.yield()
+                end)
+
+                coroutine.yield()
+            end)
+
+            expect(Count).to.equal(0)
+            Async.FireSignal(Root, "Test")
+            expect(Count).to.equal(2)
+            Async.FireSignal(Root, "Irrelevant")
+            expect(Count).to.equal(2)
+            Async.FireSignal(Root, "Test")
+            expect(Count).to.equal(4)
+        end)
+
+        it("should ignore finished threads by default", function()
+            local Count = 0
+            local Root = Async.Spawn(function()
+                Async.OnSignal(function(Data)
+                    Count += (Data == "Test" and 1 or 0)
+                end)
+
+                Async.Spawn(function()
+                    Async.OnSignal(function(Data)
+                        Count += (Data == "Test" and 1 or 0)
+                    end)
+
+                    coroutine.yield()
+                end)
+            end)
+
+            expect(Count).to.equal(0)
+            Async.FireSignal(Root, "Test")
+            expect(Count).to.equal(1)
+            Async.FireSignal(Root, "Irrelevant")
+            expect(Count).to.equal(1)
+            Async.FireSignal(Root, "Test")
+            expect(Count).to.equal(2)
+        end)
+
+        it("should stop at a given depth number", function()
+            local Count = 0
+            
+            local function Make(Callback)
+                return Async.Spawn(function()
+                    Async.OnSignal(function(Data)
+                        Count += (Data == "Test" and 1 or 0)
+                    end)
+
+                    if (Callback) then Callback() end
+                    coroutine.yield()
+                end)
+            end
+
+            local Root = Make(function()
+                Make(function()
+                    Make(function() end)
+                    Make(function() end)
+                    Make(function() end)
+                    Make(function() end)
+                end)
+                Make(function()
+                    Make(function() end)
+                    Make(function() end)
+                    Make(function() end)
+                    Make(function() end)
+                end)
+            end)
+
+            expect(Count).to.equal(0)
+            Async.FireSignal(Root, "Test", 2)
+            expect(Count).to.equal(3)
+            Async.FireSignal(Root, "Irrelevant")
+            expect(Count).to.equal(3)
+            Async.FireSignal(Root, "Test", 2)
+            expect(Count).to.equal(6)
+        end)
+
+        it("should include finished threads if AllowFinishedThreads is true", function()
+            local Count = 0
+            local Root = Async.Spawn(function()
+                Async.OnSignal(function(Data)
+                    Count += (Data == "Test" and 1 or 0)
+                end)
+
+                Async.Spawn(function()
+                    Async.OnSignal(function(Data)
+                        Count += (Data == "Test" and 1 or 0)
+                    end)
+
+                    coroutine.yield()
+                end)
+            end)
+
+            expect(Count).to.equal(0)
+            Async.FireSignal(Root, "Test", nil, true)
+            expect(Count).to.equal(2)
+            Async.FireSignal(Root, "Irrelevant", nil, true)
+            expect(Count).to.equal(2)
+            Async.FireSignal(Root, "Test", nil, true)
+            expect(Count).to.equal(4)
+        end)
+    end)
+
+    describe("Retries", function()
+        it("should retry the function a given number of times before failing", function()
+            local Ran = 0
+            local Success, Result = Async.Await(Async.Retries(function()
+                Ran += 1
+                error("<Test>")
+            end, 3))
+            expect(Ran).to.equal(3)
+            expect(Success).to.equal(false)
+            expect(Result).to.equal("RETRIES_EXHAUSTED")
+        end)
+
+        it("should retry the function a given number of times with a delay", function()
+            local Ran = 0
+            local Start = os.clock()
+            Async.Await(Async.Retries(function()
+                Ran += 1
+                error("<Test>")
+            end, 3, 0.1))
+            expect(Ran).to.equal(3)
+            expect((os.clock() - Start) > 0.3).to.equal(true)
+        end)
+
+        it("should return the result of the first successful call", function()
+            local Success, Result = Async.Await(Async.Retries(function()
+                return "Success"
+            end, 3))
+            expect(Success).to.equal(true)
+            expect(Result).to.equal("Success")
+
+            local Count = 0
+            Success, Result = Async.Await(Async.Retries(function()
+                Count += 1
+
+                if (Count < 2) then
+                    error("<Test>")
+                end
+
+                return "Success"
+            end, 3))
+            expect(Success).to.equal(true)
+            expect(Result).to.equal("Success")
+        end)
+    end)
+
+    describe("AwaitDescendants", function()
+        it("should yield until all descendants finish", function()
+            local Start = os.clock()
+            local Root = Async.Spawn(function()
+                Async.Spawn(function()
+                    Async.Spawn(function()
+                        task.wait(0.1)
+                    end)
+
+                    task.wait(0.1)
+                end)
+
+                task.wait(0.1)
+            end)
+            Async.AwaitDescendants(Root)
+            expect((os.clock() - Start) > 0.1).to.equal(true)
+        end)
+
+        it("should immediately accept dead threads", function()
+            local Start = os.clock()
+            local Root = Async.Spawn(function()
+                Async.Spawn(function()
+                    Async.Spawn(function()
+                        error("<wah>")
+                    end)
+
+                    task.wait(0.1)
+                end)
+
+                task.wait(0.1)
+            end)
+            local Results = Async.AwaitDescendants(Root)
+            expect((os.clock() - Start) > 0.1).to.equal(true)
+            expect(#Results).to.equal(3)
         end)
     end)
 end
