@@ -4,7 +4,7 @@
 
 -- Allows easy command bar paste.
 if (not script and Instance) then
-    script = game:GetService("ReplicatedFirst").Async
+    script = game:GetService("ReplicatedFirst").Async.Async
 end
 
 local TypeGuard = require(script.Parent.Parent:WaitForChild("TypeGuard"))
@@ -212,7 +212,7 @@ local function _CaptureThread(ParentThread: thread, Callback: ThreadFunction, ..
     -- Catch any errors (this is still a bit weird).
     local GotError
     local CallSuccess, ReportedResult = xpcall(Callback, function(Error)
-        GotError = strmatch(Error, "<([%w_]+)>") or (Error .. "\n" .. dbtraceback(nil, 2))
+        GotError = strmatch(Error, "<<([%w_]+)>>") or (Error .. "\n" .. dbtraceback(nil, 2))
     end, ...)
 
     -- Threw an error -> terminate all sub-threads.
@@ -395,7 +395,7 @@ local function _DoRetries(Callback: ThreadFunction, Retries: number, Delay: numb
         end
     end
 
-    error("<RETRIES_EXHAUSTED>")
+    error("<<RETRIES_EXHAUSTED>>")
 end
 --#endregion
 
@@ -419,7 +419,7 @@ function Async.SpawnTimed(Callback: ThreadFunction, Timeout: number?, ...): thre
     _SpawnTimedParams(Callback, Timeout)
 
     local Thread = tsspawn(_CaptureThread, crrunning(), Callback, ...)
-    tsdelay(Timeout, _Finish, Thread, true, false, "<TIMEOUT>") -- TODO: insert this into thread's children?
+    tsdelay(Timeout, _Finish, Thread, true, false, "<<TIMEOUT>>") -- TODO: insert this into thread's children?
     return Thread
 end
 
@@ -494,11 +494,16 @@ end
 
 local _ResultsParams = TypeGuard.Params(TypeGuard.Thread())
 --- Returns the results of a thread, if it has finished.
-function Async.Results(Thread: thread): (boolean, any?)
+function Async.Results(Thread: thread): (boolean?, any?)
     _ResultsParams(Thread)
 
-    local Target = _AssertGetThreadMetadata(Thread)
-    return Target[METADATA_KEY_SUCCESS], Target[METADATA_KEY_RESULT]
+    local Target = _ThreadMetadata[Thread]
+
+    if (Target) then
+        return Target[METADATA_KEY_SUCCESS], Target[METADATA_KEY_RESULT]
+    end
+
+    return nil, nil
 end
 
 

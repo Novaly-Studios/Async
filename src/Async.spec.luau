@@ -1221,6 +1221,16 @@ return function()
 
             expect(Async.Results(Thread)).to.equal(nil)
         end)
+
+        it("should return nil for unregistered threads", function()
+            local Success, Result
+            task.spawn(function()
+                Success, Result = Async.Results(coroutine.running())
+            end)
+
+            expect(Success).to.equal(nil)
+            expect(Result).to.equal(nil)
+        end)
     end)
 
     describe("FireSignal", function()
@@ -1345,7 +1355,7 @@ return function()
             local Ran = 0
             local Success, Result = Async.Await(Async.Retries(function()
                 Ran += 1
-                error("<Test>")
+                error("<<Test>>")
             end, 3))
             expect(Ran).to.equal(3)
             expect(Success).to.equal(false)
@@ -1357,7 +1367,7 @@ return function()
             local Start = os.clock()
             Async.Await(Async.Retries(function()
                 Ran += 1
-                error("<Test>")
+                error("<<Test>>")
             end, 3, 0.1))
             expect(Ran).to.equal(3)
             expect((os.clock() - Start) > 0.3).to.equal(true)
@@ -1375,7 +1385,7 @@ return function()
                 Count += 1
 
                 if (Count < 2) then
-                    error("<Test>")
+                    error("<<Test>>")
                 end
 
                 return "Success"
@@ -1408,7 +1418,7 @@ return function()
             local Root = Async.Spawn(function()
                 Async.Spawn(function()
                     Async.Spawn(function()
-                        error("<wah>")
+                        error("<<wah>>")
                     end)
 
                     task.wait(0.1)
