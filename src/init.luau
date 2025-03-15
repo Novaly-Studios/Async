@@ -47,12 +47,13 @@ local strmatch = string.match
 --- An extension of the Roblox task library with error handling, tree-based task termination, and await support.
 local Async = {}
 
+export type Thread<Return> = {_ReturnType: Return} & thread
+
 type ThreadFunction<Return, Args...> = ((Args...) -> (Return)) | ((Args...) -> ())
 type FinishCallback = ((Success: boolean, Result: any?) -> ())
 type SignalCallback = ((any) -> ())
 type ThreadMetadata = {[number]: any}
 type AnyFunction = ((...any) -> (...any))
-type Thread<Return> = {_ReturnType: Return} & thread
 
 local WEAK_VALUE_RESIZE_MT = {__mode = "vs"}
 local WEAK_KEY_RESIZE_MT = {__mode = "ks"}
