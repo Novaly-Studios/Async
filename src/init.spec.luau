@@ -3,7 +3,7 @@ it = it or anyfn
 expect = expect or anyfn
 describe = describe or anyfn
 
-local Async = require(script.Parent.Async)
+local Async = require(script.Parent)
 Async.SetErrorReporter(nil)
 
 return function()
@@ -1357,6 +1357,7 @@ return function()
                 Ran += 1
                 error("<<Test>>")
             end, 3))
+
             expect(Ran).to.equal(3)
             expect(Success).to.equal(false)
             expect(Result).to.equal("RETRIES_EXHAUSTED")
@@ -1369,8 +1370,23 @@ return function()
                 Ran += 1
                 error("<<Test>>")
             end, 3, 0.1))
+
             expect(Ran).to.equal(3)
             expect((os.clock() - Start) > 0.3).to.equal(true)
+        end)
+
+        it("should accept a timeout and give a TIMEOUT result if it occurs", function()
+            local Finished = false
+            local Success, Result = Async.Await(Async.Retries(function()
+                Async.OnFinish(function()
+                    Finished = true
+                end)
+                error("<<Test>>")
+            end, 3, 0.1, 0.1))
+
+            expect(Success).to.equal(false)
+            expect(Result).to.equal("TIMEOUT")
+            expect(Finished).to.equal(true)
         end)
 
         it("should return the result of the first successful call", function()
